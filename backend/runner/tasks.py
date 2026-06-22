@@ -114,6 +114,9 @@ def run_submission(self, submission_id: int):
     # Step 5: Update user progress
     _update_progress(submission)
 
+    # Step 6: Push result to student via WebSocket
+    _push_result_to_websocket(submission)
+
 
 def _update_progress(submission):
     from submissions.models import UserExerciseProgress
@@ -136,3 +139,29 @@ def _update_progress(submission):
         submission.user.save(update_fields=['total_xp', 'level'])
 
     progress.save()
+
+
+def _push_result_to_websocket(submission):
+    """Push the completed submission result to the student's WebSocket connection."""
+    from asgiref.sync import async_to_sync
+    from channels.layers import get_channel_layer
+    from submissions.serializers import SubmissionSerializer
+
+    channel_layer = get_channel_layer()
+    group_name = f'submission_{submission.id}'
+
+    # Re-fetch with test_results for serialization
+    from submissions.models import Submission
+    submission = Submission.objects.prefetch_related(
+        'test_results__test_case'
+    ).get(id=submission.id)
+
+    data = SubmissionSerializer(submission).data
+
+    async_to_sync(channel_layer.group_send)(
+        group_name,
+        {
+            'type': 'submission_result',  # maps to consumer method
+            'data': data,
+        }
+    )

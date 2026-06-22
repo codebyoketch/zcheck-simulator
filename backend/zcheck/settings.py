@@ -11,6 +11,7 @@ DEBUG = os.environ.get('DEBUG', 'True') == 'True'
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'localhost 127.0.0.1').split()
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -22,6 +23,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'corsheaders',
     'django_filters',
+    'channels',
     # Local apps
     'users',
     'exercises',
@@ -59,6 +61,17 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'zcheck.wsgi.application'
+ASGI_APPLICATION = 'zcheck.asgi.application'
+
+# Django Channels — Redis as the layer backend
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [os.environ.get('REDIS_URL', 'redis://localhost:6379/0')],
+        },
+    },
+}
 
 DATABASES = {
     'default': {
