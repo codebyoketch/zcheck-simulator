@@ -19,32 +19,39 @@ services:
     image: redis:7-alpine
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   django:
     build:
       context: .
       dockerfile: Dockerfile
-    command: daphne -b 0.0.0.0 -p 8000 zcheck.asgi:application
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py collectstatic --noinput &&
+             daphne -b 0.0.0.0 -p 8000 zcheck.asgi:application"
     environment:
       - DEBUG=False
-      - SECRET_KEY=${SECRET_KEY}
+      - SECRET_KEY=${SECRET_KEY:-changeme-set-in-env}
       - DB_HOST=db
       - DB_NAME=zcheck
       - DB_USER=zcheck
       - DB_PASSWORD=zcheck
       - REDIS_URL=redis://redis:6379/0
-      - ALLOWED_HOSTS=localhost 127.0.0.1 ${DOMAIN}
-      - CORS_ALLOWED_ORIGINS=http://localhost:3000 https://${DOMAIN}
+      - ALLOWED_HOSTS=localhost 127.0.0.1 ${DOMAIN:-localhost}
+      - CORS_ALLOWED_ORIGINS=http://localhost:3000 https://${DOMAIN:-localhost}
     volumes:
       - static_files:/app/staticfiles
       - media_files:/app/media
-      # Give Django access to Docker socket so it can spin up runner containers
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       db:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     ports:
       - "8000:8000"
 
@@ -55,7 +62,7 @@ services:
     command: celery -A zcheck worker --loglevel=info --concurrency=4
     environment:
       - DEBUG=False
-      - SECRET_KEY=${SECRET_KEY}
+      - SECRET_KEY=${SECRET_KEY:-changeme-set-in-env}
       - DB_HOST=db
       - DB_NAME=zcheck
       - DB_USER=zcheck
@@ -64,8 +71,12 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
-      - django
-      - redis
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      django:
+        condition: service_started
 
   nginx:
     image: nginx:alpine
@@ -75,7 +86,6 @@ services:
       - media_files:/media
     ports:
       - "80:80"
-      - "443:443"
     depends_on:
       - django
 
