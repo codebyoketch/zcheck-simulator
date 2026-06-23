@@ -83,3 +83,40 @@ pnpm-debug.log*
 .env.test.local
 .env.production.local
 *.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+staticfiles/
+media/
+
+# Environment
+.env
+*.env.local
+
+# Node
+node_modules/
+npm-debug.log*
+build/
+.DS_Store
+
+# Docker
+*.override.yml
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
