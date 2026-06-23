@@ -16,39 +16,37 @@ export default function Navbar() {
     { to: '/history',   label: 'History' },
   ];
 
+  const isAdmin = user?.is_staff || user?.role === 'admin';
+
   return (
     <nav className="navbar">
-      {/* Logo */}
       <Link to="/dashboard" className="nav-logo">
-        <span className="nav-logo-bars">
-          <span /><span />
-        </span>
+        <span className="nav-logo-bars"><span /><span /></span>
         <span className="nav-logo-text">ZCheck</span>
       </Link>
 
-      {/* Links */}
       <div className="nav-links">
         {nav.map(n => (
-          <Link
-            key={n.to}
-            to={n.to}
-            className={`nav-link ${location.pathname === n.to ? 'active' : ''}`}
-          >
+          <Link key={n.to} to={n.to}
+            className={`nav-link ${location.pathname === n.to ? 'active' : ''}`}>
             {n.label}
           </Link>
         ))}
+        {isAdmin && (
+          <Link to="/admin"
+            className={`nav-link nav-link-admin ${location.pathname.startsWith('/admin') ? 'active' : ''}`}>
+            Admin
+          </Link>
+        )}
       </div>
 
-      {/* User */}
       <div className="nav-user">
         <span className="nav-username mono">{user?.username}</span>
         <div className="nav-xp mono">
           <span className="text-teal">Lv.{user?.level}</span>
           <span className="text-muted">{user?.total_xp} XP</span>
         </div>
-        <button className="btn btn-ghost nav-logout" onClick={handleLogout}>
-          Logout
-        </button>
+        <button className="btn btn-ghost nav-logout" onClick={handleLogout}>Logout</button>
       </div>
     </nav>
   );

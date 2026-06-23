@@ -82,3 +82,7 @@
   padding: 5px 12px;
   font-size: 12px;
 }
+
+.nav-link-admin { color: var(--purple) !important; }
+.nav-link-admin:hover { background: var(--purple-glow) !important; color: #a78bfa !important; }
+.nav-link-admin.active { background: var(--purple-glow) !important; color: #a78bfa !important; }
