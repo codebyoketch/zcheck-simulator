@@ -27,10 +27,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = User
         fields = (
             'id', 'username', 'email', 'first_name', 'last_name',
-            'role', 'avatar_url', 'bio', 'total_xp', 'level',
+            'role', 'is_staff', 'avatar_url', 'bio', 'total_xp', 'level',
             'created_at', 'date_joined',
         )
-        read_only_fields = ('id', 'role', 'total_xp', 'level', 'created_at', 'date_joined')
+        read_only_fields = ('id', 'role', 'is_staff', 'total_xp', 'level', 'created_at', 'date_joined')
 
 
 class UserAdminSerializer(serializers.ModelSerializer):

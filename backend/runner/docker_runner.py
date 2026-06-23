@@ -59,6 +59,7 @@ def run_code(
                 code_file=code_file,
                 docker_image=docker_image,
                 language_slug=language_slug,
+                ext=ext,
                 stdin=tc.get('stdin', ''),
                 expected_output=tc['expected_output'],
                 test_case_id=tc['id'],
@@ -101,7 +102,7 @@ def run_code(
 
 
 def _run_single_test(
-    code_file, docker_image, language_slug, stdin,
+    code_file, docker_image, language_slug, ext, stdin,
     expected_output, test_case_id, order, is_hidden,
     timeout_seconds, memory_limit, tmpdir
 ) -> TestCaseResult:

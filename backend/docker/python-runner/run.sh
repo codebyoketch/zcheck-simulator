@@ -1,3 +1,6 @@
 #!/bin/sh
+# ZCheck Python Runner
 FILE=${1:-solution.py}
-python3 "$FILE"
+
+# Run with restricted environment
+exec python3 -u "/code/$FILE"

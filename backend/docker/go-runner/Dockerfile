@@ -1,14 +1,18 @@
 FROM golang:1.22-alpine
 
-WORKDIR /z01
-# Copy z01 package source into the image
-COPY z01/ .
-RUN go build -o /usr/local/lib/z01.a . 2>/dev/null || true
+# Install build tools
+RUN apk add --no-cache git
 
-WORKDIR /code
+# Copy z01 package source (copy your z01 folder here before building)
+# If z01 folder doesn't exist, the runner still works for exercises that don't need it
+COPY z01/ /z01/
+RUN if [ -d "/z01" ] && [ "$(ls -A /z01)" ]; then \
+      cd /z01 && go mod init z01 2>/dev/null || true; \
+    fi
 
-# Copy the entrypoint script
+# Copy entrypoint
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
 
+WORKDIR /code
 ENTRYPOINT ["/run.sh"]

@@ -1,3 +1,5 @@
 #!/bin/sh
+# ZCheck JavaScript Runner
 FILE=${1:-solution.js}
-node "$FILE"
+
+exec node "/code/$FILE"

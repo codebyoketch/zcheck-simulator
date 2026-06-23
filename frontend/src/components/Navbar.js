@@ -7,16 +7,15 @@ export default function Navbar() {
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-
   const handleLogout = () => { logout(); navigate('/'); };
+  const isAdmin = user?.is_staff || user?.role === 'admin';
 
   const nav = [
-    { to: '/dashboard', label: 'Dashboard' },
-    { to: '/practice',  label: 'Practice' },
-    { to: '/history',   label: 'History' },
+    { to: '/dashboard',   label: 'Dashboard' },
+    { to: '/practice',    label: 'Practice' },
+    { to: '/checkpoints', label: 'Map' },
+    { to: '/history',     label: 'History' },
   ];
-
-  const isAdmin = user?.is_staff || user?.role === 'admin';
 
   return (
     <nav className="navbar">
