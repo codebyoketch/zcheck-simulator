@@ -1,18 +1,18 @@
 FROM golang:1.22-alpine
 
-# Install build tools
 RUN apk add --no-cache git
 
-# Copy z01 package source (copy your z01 folder here before building)
-# If z01 folder doesn't exist, the runner still works for exercises that don't need it
-COPY z01/ /z01/
-RUN if [ -d "/z01" ] && [ "$(ls -A /z01)" ]; then \
-      cd /z01 && go mod init z01 2>/dev/null || true; \
-    fi
+# Pre-fetch and cache z01 at image build time
+# This means no network access needed during student code execution
+RUN mkdir -p /tmp/prefetch && \
+    cd /tmp/prefetch && \
+    go mod init prefetch && \
+    go get github.com/01-edu/z01@latest && \
+    cd / && rm -rf /tmp/prefetch
 
-# Copy entrypoint
+# Copy entrypoint script
 COPY run.sh /run.sh
 RUN chmod +x /run.sh
 
 WORKDIR /code
-ENTRYPOINT ["/run.sh"]
+ENTRYPOINT ["/bin/sh", "/run.sh"]

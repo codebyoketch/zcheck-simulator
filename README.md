@@ -67,14 +67,11 @@ cp .env.example .env
 
 Each language runs in its own isolated Docker sandbox.
 
-**Go runner** (includes z01 package):
+**Go runner** (z01 package fetched automatically at build time):
 ```bash
-# First copy the z01 source into the Go runner image directory
-cp -r /path/to/z01 backend/docker/go-runner/z01/
-
-# Build the image
 docker build -t zcheck-go-runner:latest backend/docker/go-runner/
 ```
+> z01 is pulled from `github.com/01-edu/z01` during the image build and cached inside the image. No files to copy manually. Network is disabled at runtime — students cannot make HTTP calls from their code.
 
 **Python runner:**
 ```bash
@@ -288,7 +285,6 @@ git clone <repo>
 cd zcheck-simulator/backend
 
 # Build runner images
-cp -r /path/to/z01 docker/go-runner/z01/
 docker build -t zcheck-go-runner:latest docker/go-runner/
 docker build -t zcheck-python-runner:latest docker/python-runner/
 docker build -t zcheck-js-runner:latest docker/js-runner/
@@ -324,6 +320,6 @@ npm install && npm run build
 - [x] Session summary — per-level results, attempts, pass/fail
 - [x] Admin UI — Exercises, Test Cases, Checkpoints, Languages, Users
 - [x] docker-compose — auto-migrate and collectstatic on startup
-- [ ] Docker runner images built (pending z01 source)
+- [x] Docker runner images — Go (z01 auto-fetched), Python, JS
 - [ ] Full exercise + test case bank (5 seeded, 40+ remaining)
 - [ ] Python and JavaScript checkpoint support

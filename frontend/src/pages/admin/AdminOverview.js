@@ -5,38 +5,30 @@ import '../../components/admin/AdminLayout.css';
 function OverviewCard({ label, value, sub, color }) {
   return (
     <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div className="mono" style={{ fontSize: 32, fontWeight: 700, color: color || 'var(--teal)' }}>{value ?? '—'}</div>
+      <div className="mono" style={{ fontSize: 32, fontWeight: 700, color: color || 'var(--teal)' }}>{value}</div>
       <div style={{ fontSize: 12, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>{label}</div>
       {sub && <div className="mono" style={{ fontSize: 11, color: 'var(--text-dim)' }}>{sub}</div>}
     </div>
   );
 }
 
-// Safely resolve a single API call — never throws
-function safe(promise) {
-  return promise.catch(() => ({ data: [] }));
-}
-
 export default function AdminOverview() {
-  const [stats,   setStats]   = useState(null);
-  const [error,   setError]   = useState(null);
+  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
-      safe(adminGetExercises({ page_size: 1 })),
-      safe(adminGetUsers()),
-      safe(adminGetLanguages()),
-      safe(adminGetCheckpoints()),
+      adminGetExercises({ page_size: 1 }),
+      adminGetUsers(),
+      adminGetLanguages(),
+      adminGetCheckpoints(),
     ]).then(([ex, us, la, ch]) => {
       setStats({
-        exercises:   ex.data.count   ?? ex.data.length  ?? 0,
-        users:       us.data.count   ?? us.data.length  ?? 0,
-        languages:   la.data.length  ?? 0,
-        checkpoints: ch.data.length  ?? 0,
+        exercises:   ex.data.count ?? ex.data.length,
+        users:       us.data.count ?? us.data.length,
+        languages:   la.data.length,
+        checkpoints: ch.data.length,
       });
-    }).catch(() => {
-      setError('Failed to load overview stats.');
     }).finally(() => setLoading(false));
   }, []);
 
@@ -51,14 +43,12 @@ export default function AdminOverview() {
 
       {loading
         ? <div className="admin-loading">Loading...</div>
-        : error
-          ? <div className="mono" style={{ color: 'var(--error)', padding: 20 }}>{error}</div>
-          : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
-              <OverviewCard label="Exercises"   value={stats.exercises}   sub="in question bank" />
-              <OverviewCard label="Students"    value={stats.users}       sub="registered" color="var(--purple)" />
-              <OverviewCard label="Languages"   value={stats.languages}   sub="configured" color="var(--info)" />
-              <OverviewCard label="Checkpoints" value={stats.checkpoints} sub="available" color="var(--warn)" />
-            </div>
+        : <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+            <OverviewCard label="Exercises"   value={stats.exercises}   sub="in question bank" />
+            <OverviewCard label="Students"    value={stats.users}       sub="registered" color="var(--purple)" />
+            <OverviewCard label="Languages"   value={stats.languages}   sub="configured" color="var(--info)" />
+            <OverviewCard label="Checkpoints" value={stats.checkpoints} sub="available" color="var(--warn)" />
+          </div>
       }
 
       <div style={{ marginTop: 40 }}>
