@@ -5,7 +5,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 import {
   getRandomExercise, getAvailableLevels,
-  submitCode, startSession, endSession,
+  submitCode, getSubmission, startSession, endSession,
   createSubmissionSocket,
 } from '../api/client';
 import './PracticeSession.css';
@@ -152,10 +152,10 @@ export default function PracticeSession() {
   const [summaryReason,   setSummaryReason]   = useState('');
   const [showConfirm,     setShowConfirm]     = useState(false);
 
-  const termRef    = useRef(null);
-  const sessionRef = useRef(null);
-  const timerRef   = useRef(null);
-  const levelsRef  = useRef([]);
+  const termRef         = useRef(null);
+  const sessionRef      = useRef(null);
+  const timerRef        = useRef(null);
+  const levelsRef       = useRef([]);
   const levelResultsRef = useRef([]);
 
   // Keep refs in sync
@@ -235,14 +235,18 @@ export default function PracticeSession() {
     setSubmitting(true);
     setTermStatus(null);
     setTerminal('// Submitting...\n// Running test cases...');
+
     try {
       const { data: sub } = await submitCode({
         exercise_slug: exercise.slug, code,
         session_id: sessionRef.current?.id || null,
       });
-      const ws = createSubmissionSocket(sub.id);
-      ws.onmessage = (event) => {
-        const result = JSON.parse(event.data);
+
+      let resultReceived = false;
+
+      const handleResult = (result) => {
+        if (resultReceived) return;
+        resultReceived = true;
         setTerminal(result.compile_output || '// No output.');
         setTermStatus(result.status === 'accepted' ? 'pass' : 'fail');
         const attempts = currentAttempts + 1;
@@ -269,7 +273,36 @@ export default function PracticeSession() {
         }
         setSubmitting(false);
       };
-      ws.onerror = () => { setTerminal('// Connection error.'); setSubmitting(false); };
+
+      // WebSocket — primary delivery
+      const ws = createSubmissionSocket(sub.id);
+      ws.onmessage = (event) => {
+        handleResult(JSON.parse(event.data));
+        ws.close();
+      };
+      ws.onerror = () => { ws.close(); };
+
+      // Polling fallback — kicks in if WebSocket doesn't deliver
+      const pollInterval = setInterval(async () => {
+        if (resultReceived) { clearInterval(pollInterval); return; }
+        try {
+          const { data } = await getSubmission(sub.id);
+          if (data.status !== 'pending' && data.status !== 'running') {
+            clearInterval(pollInterval);
+            handleResult(data);
+          }
+        } catch {}
+      }, 3000);
+
+      // Clear poll after 2 minutes max
+      setTimeout(() => {
+        if (!resultReceived) {
+          clearInterval(pollInterval);
+          setTerminal('// Timed out waiting for result.');
+          setSubmitting(false);
+        }
+      }, 120000);
+
     } catch (err) {
       setTerminal(`// Submission failed: ${err.response?.data?.detail || err.message}`);
       setSubmitting(false);
