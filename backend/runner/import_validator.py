@@ -7,10 +7,6 @@ from typing import List, Tuple
 
 
 def validate_go_imports(code: str, forbidden: List[str], allowed: List[str]) -> Tuple[bool, str]:
-    """
-    Returns (is_valid, error_message).
-    Checks Go import statements for forbidden packages.
-    """
     # Match both single imports and import blocks
     single_import = re.findall(r'import\s+"([^"]+)"', code)
     block_imports = re.findall(r'import\s*\(([^)]+)\)', code, re.DOTALL)
@@ -20,19 +16,21 @@ def validate_go_imports(code: str, forbidden: List[str], allowed: List[str]) -> 
         pkgs = re.findall(r'"([^"]+)"', block)
         found_imports.update(pkgs)
 
+    def matches(imp: str, pkg: str) -> bool:
+        """Match full path or suffix: 'z01' matches 'github.com/01-edu/z01'"""
+        return imp == pkg or imp.endswith('/' + pkg)
+
     for imp in found_imports:
-        # Check forbidden list
         for forbidden_pkg in forbidden:
-            if imp == forbidden_pkg or imp.startswith(forbidden_pkg + '/'):
+            if matches(imp, forbidden_pkg):
                 return False, (
                     f'❌ Illegal import detected: "{imp}" is not allowed for this exercise.\n'
                     f'   Hint: Use the allowed packages instead.'
                 )
 
-    # If allowed list is specified, reject anything not in it (and not stdlib basics)
     if allowed:
         for imp in found_imports:
-            if imp not in allowed:
+            if not any(matches(imp, a) for a in allowed):
                 return False, (
                     f'❌ Import "{imp}" is not in the allowed imports for this exercise.\n'
                     f'   Allowed: {", ".join(allowed)}'

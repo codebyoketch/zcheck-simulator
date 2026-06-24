@@ -9,10 +9,6 @@ Connection: ws://host/ws/submissions/<submission_id>/
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
 from channels.db import database_sync_to_async
-from rest_framework_simplejwt.tokens import AccessToken
-from django.contrib.auth import get_user_model
-
-User = get_user_model()
 
 
 class SubmissionConsumer(AsyncWebsocketConsumer):
@@ -56,6 +52,10 @@ class SubmissionConsumer(AsyncWebsocketConsumer):
     # ── Helpers ──────────────────────────────────────────────────────────────
 
     async def _get_user(self):
+        from rest_framework_simplejwt.tokens import AccessToken
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+
         query_string = self.scope.get('query_string', b'').decode()
         params = dict(p.split('=') for p in query_string.split('&') if '=' in p)
         token_str = params.get('token')
