@@ -66,8 +66,9 @@ def run_code(
                         '--memory-swap', memory_limit,
                         '--network', 'none',
                         '--read-only',
-                        '--tmpfs', '/tmp:size=50m',
+                        '--tmpfs', '/tmp:size=50m,exec',    # exec needed to run compiled binary
                         '--tmpfs', '/tmp/sol:size=50m',
+                        '--tmpfs', '/root/.cache:size=50m', # Go build cache
                         '--cpus', '0.5',
                         '-v', f'{host_tmpdir}:/code:ro',
                         docker_image,

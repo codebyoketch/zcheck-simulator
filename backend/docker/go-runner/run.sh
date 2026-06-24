@@ -1,6 +1,5 @@
 #!/bin/sh
 # ZCheck Go Runner
-# z01 is pre-cached in the image at build time — no network needed at runtime
 set -e
 
 FILE=${1:-solution.go}
@@ -10,10 +9,18 @@ mkdir -p "$WORKDIR"
 cp "/code/$FILE" "$WORKDIR/main.go"
 cd "$WORKDIR"
 
-# Set up module with z01 (cached in image)
-go mod init solution 2>/dev/null
-# Point to the cached module — GOFLAGS=-mod=mod allows using cached deps offline
-GOFLAGS="-mod=mod" go get github.com/01-edu/z01 2>/dev/null || true
+# Point Go to the pre-cached module — no network needed
+export GOPATH=/go
+export GOMODCACHE=/go/pkg/mod
+export GOFLAGS="-mod=mod"
+export GONOSUMCHECK="*"
+export GONOSUMDB="*"
+export GOFLAGS="-mod=mod"
+export GOPROXY="off"
+
+# Set up module
+go mod init solution 2>/dev/null || true
+go get github.com/01-edu/z01@v0.1.0 2>/dev/null || true
 go mod tidy -e 2>/dev/null || true
 
 # Compile
