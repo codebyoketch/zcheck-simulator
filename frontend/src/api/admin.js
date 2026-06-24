@@ -26,6 +26,6 @@ export const adminUpdateCheckpoint = (slug, data) => api.put(`/admin/checkpoints
 export const adminDeleteCheckpoint = (slug)     => api.delete(`/admin/checkpoints/${slug}/`);
 
 // ── Users ─────────────────────────────────────────────────────────────────────
-export const adminGetUsers  = (params) => api.get('/admin/users/', { params });
-export const adminGetUser   = (id)     => api.get(`/admin/users/${id}/`);
-export const adminUpdateUser= (id, data) => api.put(`/admin/users/${id}/`, data);
+export const adminGetUsers   = (params)   => api.get('/auth/admin/users/', { params });
+export const adminGetUser    = (id)       => api.get(`/auth/admin/users/${id}/`);
+export const adminUpdateUser = (id, data) => api.put(`/auth/admin/users/${id}/`, data);

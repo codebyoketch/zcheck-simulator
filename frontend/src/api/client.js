@@ -34,24 +34,40 @@ api.interceptors.response.use(
   }
 );
 
+// Unwrap paginated responses — normalizes { count, next, results: [] }
+// Keeps count accessible as res.data.count, array as res.data
+api.interceptors.response.use(res => {
+  if (
+    res.data &&
+    typeof res.data === 'object' &&
+    'results' in res.data &&
+    Array.isArray(res.data.results)
+  ) {
+    const { count, results } = res.data;
+    res.data = results;
+    res.data.count = count;
+  }
+  return res;
+});
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export const register = d  => api.post('/auth/register/', d);
 export const login    = d  => api.post('/auth/login/', d);
 export const getMe    = () => api.get('/auth/me/');
 
 // ── Exercises ─────────────────────────────────────────────────────────────────
-export const getExercises   = (params) => api.get('/exercises/', { params });
-export const getExercise    = (slug)   => api.get(`/exercises/${slug}/`);
+export const getExercises      = (params) => api.get('/exercises/', { params });
+export const getExercise       = (slug)   => api.get(`/exercises/${slug}/`);
 export const getRandomExercise = (params) => api.get('/exercises/random/', { params });
-export const getCheckpoints = () => api.get('/checkpoints/');
-export const getLanguages   = () => api.get('/languages/');
+export const getCheckpoints    = ()       => api.get('/checkpoints/');
+export const getLanguages      = ()       => api.get('/languages/');
 
 // ── Submissions ───────────────────────────────────────────────────────────────
-export const submitCode     = (data) => api.post('/submit/', data);
-export const getSubmission  = (id)   => api.get(`/submissions/${id}/`);
-export const getProgress    = ()     => api.get('/progress/');
-export const getHistory     = ()     => api.get('/history/');
-export const startSession   = (data) => api.post('/sessions/start/', data);
+export const submitCode     = (data)     => api.post('/submit/', data);
+export const getSubmission  = (id)       => api.get(`/submissions/${id}/`);
+export const getProgress    = ()         => api.get('/progress/');
+export const getHistory     = ()         => api.get('/history/');
+export const startSession   = (data)     => api.post('/sessions/start/', data);
 export const endSession     = (id, data) => api.patch(`/sessions/${id}/end/`, data);
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
@@ -60,6 +76,6 @@ export const createSubmissionSocket = (submissionId) => {
   return new WebSocket(`${WS_BASE}/ws/submissions/${submissionId}/?token=${token}`);
 };
 
-export default api;
-
 export const getAvailableLevels = (params) => api.get('/levels/', { params });
+
+export default api;
