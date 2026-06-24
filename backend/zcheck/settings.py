@@ -68,7 +68,12 @@ CHANNEL_LAYERS = {
     'default': {
         'BACKEND': 'channels_redis.core.RedisChannelLayer',
         'CONFIG': {
-            'hosts': [os.environ.get('REDIS_URL', 'redis://localhost:6379/0')],
+            'hosts': [{
+                'address': os.environ.get('REDIS_URL', 'redis://localhost:6379/0'),
+                'socket_keepalive': True,
+                'socket_keepalive_options': {},
+                'retry_on_timeout': True,
+            }],
             'capacity': 1500,
             'expiry': 10,
         },

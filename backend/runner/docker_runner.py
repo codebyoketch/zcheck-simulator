@@ -1,6 +1,7 @@
 """
 Docker-based code execution engine.
-ONE container per submission — compiles once, runs all test cases inside it.
+One container per test case — uses the static run.sh baked into the image.
+Compiles and runs in a single container call per test case.
 """
 import subprocess
 import tempfile
@@ -8,6 +9,9 @@ import os
 import time
 from typing import List, Dict
 from dataclasses import dataclass, field
+
+# Translate /app inside Celery container → real host path for docker -v mounts
+HOST_APP_DIR = os.environ.get('HOST_APP_DIR', '/app')
 
 
 @dataclass
@@ -36,81 +40,92 @@ def run_code(
     timeout_seconds: int = 10,
     memory_limit: str = '64m',
 ) -> RunResult:
-    """
-    Run code against all test cases using a single Docker container.
-    Compiles once, executes binary for each test case — no repeated cold starts.
-    """
     file_extensions = {'go': 'go', 'python': 'py', 'javascript': 'js'}
     ext = file_extensions.get(language_slug, 'txt')
+    code_file = f'solution.{ext}'
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Write code file
-        code_file = f'solution.{ext}'
+    with tempfile.TemporaryDirectory(dir='/app') as tmpdir:
+        # Write code file once — shared across all test case runs
         with open(os.path.join(tmpdir, code_file), 'w') as f:
             f.write(code)
 
-        # Write all test case inputs as separate files
+        # Translate container path → host path for docker volume mount
+        host_tmpdir = tmpdir.replace('/app', HOST_APP_DIR, 1)
+
+        test_results = []
+
         for i, tc in enumerate(test_cases):
-            with open(os.path.join(tmpdir, f'stdin_{i}.txt'), 'w') as f:
-                f.write(tc.get('stdin', ''))
+            start = time.time()
+            stdin_data = tc.get('stdin', '')
 
-        # Write a runner script that the container will execute
-        # This compiles once then runs against each stdin file
-        runner_script = _build_runner_script(language_slug, code_file, len(test_cases), timeout_seconds)
-        with open(os.path.join(tmpdir, 'runner.sh'), 'w') as f:
-            f.write(runner_script)
-        os.chmod(os.path.join(tmpdir, 'runner.sh'), 0o755)
+            try:
+                proc = subprocess.run(
+                    [
+                        'docker', 'run', '--rm',
+                        '--memory', memory_limit,
+                        '--memory-swap', memory_limit,
+                        '--network', 'none',
+                        '--read-only',
+                        '--tmpfs', '/tmp:size=50m',
+                        '--tmpfs', '/tmp/sol:size=50m',
+                        '--cpus', '0.5',
+                        '-v', f'{host_tmpdir}:/code:ro',
+                        docker_image,
+                        code_file,
+                    ],
+                    input=stdin_data.encode(),
+                    capture_output=True,
+                    timeout=timeout_seconds + 5,
+                )
+            except subprocess.TimeoutExpired:
+                test_results.append(TestCaseResult(
+                    test_case_id=tc['id'],
+                    order=tc['order'],
+                    passed=False,
+                    actual_output='',
+                    error_output='Time limit exceeded',
+                    execution_time_ms=timeout_seconds * 1000,
+                    is_hidden=tc['is_hidden'],
+                ))
+                continue
+            except Exception as e:
+                test_results.append(TestCaseResult(
+                    test_case_id=tc['id'],
+                    order=tc['order'],
+                    passed=False,
+                    actual_output='',
+                    error_output=f'Runner error: {str(e)}',
+                    execution_time_ms=0,
+                    is_hidden=tc['is_hidden'],
+                ))
+                continue
 
-        # Launch ONE container
-        start = time.time()
-        try:
-            proc = subprocess.run(
-                [
-                    'docker', 'run', '--rm',
-                    '--memory', memory_limit,
-                    '--memory-swap', memory_limit,
-                    '--network', 'none',
-                    '--read-only',
-                    '--tmpfs', '/tmp:size=50m',
-                    '--cpus', '0.5',
-                    '-v', f'{tmpdir}:/code:ro',
-                    '--tmpfs', '/workspace:size=50m',
-                    '-w', '/workspace',
-                    '--entrypoint', '/bin/sh',
-                    docker_image,
-                    '/code/runner.sh',
-                ],
-                capture_output=True,
-                timeout=timeout_seconds * len(test_cases) + 30,
-            )
-        except subprocess.TimeoutExpired:
-            return RunResult(
-                status='time_limit',
-                compile_output=f'❌ Overall time limit exceeded.',
-            )
-        except Exception as e:
-            return RunResult(
-                status='runtime_error',
-                compile_output=f'Runner error: {str(e)}',
-            )
+            elapsed_ms = int((time.time() - start) * 1000)
+            stdout = proc.stdout.decode(errors='replace').strip()
+            stderr = proc.stderr.decode(errors='replace').strip()
 
-        elapsed_total = int((time.time() - start) * 1000)
+            # Compile error — non-zero exit and no stdout
+            if proc.returncode != 0 and not stdout:
+                return RunResult(
+                    status='compile_error',
+                    compile_output=f'❌ Compile error:\n{stderr}',
+                )
 
-        stdout = proc.stdout.decode(errors='replace')
-        stderr = proc.stderr.decode(errors='replace')
+            expected = tc['expected_output'].strip()
+            passed = stdout == expected and proc.returncode == 0
 
-        # Check for compile error (stderr before any RESULT: lines)
-        if proc.returncode != 0 and 'RESULT:' not in stdout:
-            return RunResult(
-                status='compile_error',
-                compile_output=f'❌ Compile error:\n{stderr.strip()}',
-            )
-
-        # Parse results — runner outputs: RESULT:<i>:<exit_code>:<output>
-        test_results = _parse_results(stdout, test_cases, elapsed_total)
+            test_results.append(TestCaseResult(
+                test_case_id=tc['id'],
+                order=tc['order'],
+                passed=passed,
+                actual_output=stdout,
+                error_output=stderr if not passed else '',
+                execution_time_ms=elapsed_ms,
+                is_hidden=tc['is_hidden'],
+            ))
 
         all_passed = all(r.passed for r in test_results)
-        has_tle    = any('timeout' in r.error_output.lower() for r in test_results)
+        has_tle    = any('time limit' in r.error_output.lower() for r in test_results)
 
         if all_passed:
             status = 'accepted'
@@ -119,118 +134,11 @@ def run_code(
         else:
             status = 'wrong_answer'
 
-        compile_output = _build_terminal_output(test_results)
-
-        return RunResult(status=status, compile_output=compile_output, test_results=test_results)
-
-
-def _build_runner_script(language_slug: str, code_file: str, num_tests: int, timeout: int) -> str:
-    """
-    Build a shell script that runs inside the container.
-    Compiles the code once, then runs against each test stdin file.
-    Outputs: RESULT:<index>:<exit_code>:<stdout>
-    """
-    lines = ['#!/bin/sh', 'set -e', '']
-
-    if language_slug == 'go':
-        lines += [
-            '# Copy source and set up module',
-            'cp /code/solution.go /workspace/main.go',
-            'cd /workspace',
-            'go mod init solution 2>/dev/null || true',
-            '# z01 is pre-cached in the image — fetch from cache (no network)',
-            'GOFLAGS="-mod=mod" go get github.com/01-edu/z01 2>/dev/null || true',
-            'go mod tidy -e 2>/dev/null || true',
-            '',
-            '# Compile',
-            'if ! go build -o /tmp/solution_bin . 2>/tmp/compile_err; then',
-            '  cat /tmp/compile_err >&2',
-            '  exit 1',
-            'fi',
-            '',
-        ]
-        run_cmd = '/tmp/solution_bin'
-
-    elif language_slug == 'python':
-        lines += [
-            'cp /code/solution.py /workspace/solution.py',
-            '# Verify syntax',
-            'if ! python3 -m py_compile /workspace/solution.py 2>/tmp/compile_err; then',
-            '  cat /tmp/compile_err >&2',
-            '  exit 1',
-            'fi',
-            '',
-        ]
-        run_cmd = 'python3 -u /workspace/solution.py'
-
-    elif language_slug == 'javascript':
-        lines += [
-            'cp /code/solution.js /workspace/solution.js',
-            '',
-        ]
-        run_cmd = 'node /workspace/solution.js'
-
-    else:
-        run_cmd = f'cat /code/{code_file}'
-
-    # Run against each test case
-    lines += ['# Run test cases']
-    for i in range(num_tests):
-        lines += [
-            f'OUTPUT_{i}=$(timeout {timeout} {run_cmd} < /code/stdin_{i}.txt 2>/tmp/stderr_{i} ; echo "EXIT:$?")',
-            f'EXIT_{i}=$(echo "$OUTPUT_{i}" | grep "EXIT:" | tail -1 | cut -d: -f2)',
-            f'OUT_{i}=$(echo "$OUTPUT_{i}" | grep -v "EXIT:" )',
-            f'ERR_{i}=$(cat /tmp/stderr_{i} 2>/dev/null || echo "")',
-            f'echo "RESULT:{i}:$EXIT_{i}:$OUT_{i}"',
-            f'echo "STDERR:{i}:$ERR_{i}"',
-            '',
-        ]
-
-    return '\n'.join(lines)
-
-
-def _parse_results(stdout: str, test_cases: List[Dict], elapsed_total: int) -> List[TestCaseResult]:
-    results = []
-    outputs = {}
-    errors  = {}
-
-    for line in stdout.splitlines():
-        if line.startswith('RESULT:'):
-            parts = line.split(':', 3)
-            if len(parts) >= 4:
-                idx     = int(parts[1])
-                exit_c  = parts[2].strip()
-                out     = parts[3].strip()
-                outputs[idx] = (exit_c, out)
-        elif line.startswith('STDERR:'):
-            parts = line.split(':', 2)
-            if len(parts) >= 3:
-                idx = int(parts[1])
-                errors[idx] = parts[2].strip()
-
-    avg_ms = elapsed_total // max(len(test_cases), 1)
-
-    for i, tc in enumerate(test_cases):
-        exit_c, actual = outputs.get(i, ('1', ''))
-        err = errors.get(i, '')
-        expected = tc['expected_output'].strip()
-        passed = (actual == expected) and exit_c == '0'
-
-        if 'timeout' in err.lower() or exit_c == '124':
-            err = f'Time limit exceeded'
-            passed = False
-
-        results.append(TestCaseResult(
-            test_case_id=tc['id'],
-            order=tc['order'],
-            passed=passed,
-            actual_output=actual,
-            error_output=err,
-            execution_time_ms=avg_ms,
-            is_hidden=tc['is_hidden'],
-        ))
-
-    return results
+        return RunResult(
+            status=status,
+            compile_output=_build_terminal_output(test_results),
+            test_results=test_results,
+        )
 
 
 def _build_terminal_output(results: List[TestCaseResult]) -> str:
