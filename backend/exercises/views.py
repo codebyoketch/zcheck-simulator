@@ -130,3 +130,24 @@ class AdminCheckpointDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = CheckpointAdminSerializer
     permission_classes = [permissions.IsAdminUser]
     lookup_field = 'slug'
+
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def available_levels(request):
+    """
+    Return the difficulty levels that actually have exercises in the bank.
+    Optionally filtered by checkpoint.
+    Used by the frontend to build the session level progression.
+    """
+    qs = Exercise.objects.filter(is_active=True)
+    checkpoint_slug = request.query_params.get('checkpoint')
+    if checkpoint_slug:
+        qs = qs.filter(checkpoint__slug=checkpoint_slug)
+
+    levels = list(
+        qs.values_list('difficulty_pct', flat=True)
+        .distinct()
+        .order_by('difficulty_pct')
+    )
+    return Response({'levels': levels})

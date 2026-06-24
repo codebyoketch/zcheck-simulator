@@ -61,3 +61,5 @@ export const createSubmissionSocket = (submissionId) => {
 };
 
 export default api;
+
+export const getAvailableLevels = (params) => api.get('/levels/', { params });

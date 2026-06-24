@@ -148,7 +148,7 @@ export default function CheckpointMap() {
   }, []);
 
   const handlePractice = (checkpoint) => {
-    navigate(`/practice?checkpoint=${checkpoint.slug}`);
+    navigate(`/disclaimer?checkpoint=${checkpoint.slug}`);
   };
 
   return (

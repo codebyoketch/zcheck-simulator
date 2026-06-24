@@ -167,3 +167,220 @@
 }
 
 .terminal.pass .terminal-output { color: var(--text); }
+
+/* ── Top bar ────────────────────────────────────────────────────────────── */
+.session-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 20px;
+  height: 52px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  gap: 20px;
+}
+
+.session-brand {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--teal);
+  letter-spacing: -0.3px;
+  flex-shrink: 0;
+}
+
+.session-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.session-level-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+}
+
+.session-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.session-timer {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--teal);
+  letter-spacing: 0.05em;
+  min-width: 80px;
+  text-align: right;
+}
+
+.session-timer.warning {
+  color: var(--fail);
+  animation: timerPulse 1s ease-in-out infinite;
+}
+
+@keyframes timerPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+
+.session-terminate {
+  font-size: 12px;
+  padding: 5px 12px;
+  border-color: rgba(248, 113, 113, 0.3);
+  color: var(--fail);
+}
+.session-terminate:hover {
+  border-color: var(--fail);
+  background: rgba(248, 113, 113, 0.08);
+  color: var(--fail);
+}
+
+/* ── Level progress bar ─────────────────────────────────────────────────── */
+.level-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.level-pip {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  border: 2px solid var(--border);
+  color: var(--text-dim);
+  background: var(--bg-panel);
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.level-pip.current {
+  border-color: var(--teal);
+  color: var(--teal);
+  background: var(--teal-glow);
+  box-shadow: 0 0 8px rgba(0, 229, 160, 0.3);
+}
+
+.level-pip.passed {
+  border-color: var(--teal);
+  background: var(--teal);
+  color: #000;
+}
+
+.level-pip.failed {
+  border-color: var(--fail);
+  background: rgba(248, 113, 113, 0.1);
+  color: var(--fail);
+}
+
+.level-pip.locked {
+  opacity: 0.35;
+}
+
+/* Connector between pips */
+.level-pip + .level-pip::before {
+  content: '';
+  position: absolute;
+  right: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 4px;
+  height: 2px;
+  background: var(--border);
+  margin-right: 0;
+}
+
+/* ── Session Summary overlay ────────────────────────────────────────────── */
+.summary-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  backdrop-filter: blur(8px);
+}
+
+.summary-card {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  animation: summaryIn 0.3s ease;
+}
+
+@keyframes summaryIn {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.summary-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.summary-icon { font-size: 36px; line-height: 1; }
+
+.summary-title {
+  font-size: 22px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.summary-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  padding: 20px;
+  background: var(--bg-panel);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+
+.summary-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.summary-levels {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.summary-level-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  background: var(--bg-panel);
+  font-size: 13px;
+}
+
+.summary-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}

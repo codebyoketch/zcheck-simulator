@@ -24,7 +24,7 @@ zcheck-simulator/
 | Backend | Django 5, Django REST Framework, SimpleJWT |
 | Real-time | Django Channels, Daphne (ASGI), Redis |
 | Task Queue | Celery + Redis |
-| Code Execution | Custom Docker sandboxes per language |
+| Code Execution | Custom Docker sandboxes per language (one container per submission) |
 | Database | PostgreSQL |
 | Proxy | Nginx |
 
@@ -96,15 +96,43 @@ docker-compose up -d
 ```
 
 This starts:
-- `django` — Daphne ASGI server (HTTP + WebSocket)
+- `django` — Daphne ASGI server (HTTP + WebSocket), runs migrations + collectstatic on boot
 - `celery` — async code execution worker
 - `redis` — message broker + channel layer
 - `db` — PostgreSQL
 - `nginx` — reverse proxy
 
+> Migrations run automatically on first start. No manual `migrate` needed.
+
 ---
 
-### 4. Run migrations
+### 4. Seed initial data and create admin
+
+```bash
+# Seed Go Elementary Programming exercises
+docker-compose exec django python manage.py seed_go_exercises
+
+# Create your admin account
+docker-compose exec django python manage.py createsuperuser
+```
+
+---
+
+### 5. Start the frontend
+
+```bash
+cd frontend
+npm install
+npm start
+```
+
+Frontend runs at `http://localhost:3000`
+
+---
+
+## Migrations (manual, if needed)
+
+Only required if you add new models or change existing ones:
 
 ```bash
 docker-compose exec django python manage.py makemigrations users
@@ -114,31 +142,7 @@ docker-compose exec django python manage.py makemigrations runner
 docker-compose exec django python manage.py migrate
 ```
 
-> `runner` has no models — `No changes detected` is expected for it.
-
----
-
-### 5. Seed initial data and create admin
-
-```bash
-# Seed Go Elementary Programming exercises from zone01
-docker-compose exec django python manage.py seed_go_exercises
-
-# Create your admin account
-docker-compose exec django python manage.py createsuperuser
-```
-
----
-
-### 6. Start the frontend
-
-```bash
-cd frontend
-npm install
-npm start
-```
-
-Frontend runs at `http://localhost:3000`
+> `runner` has no models — `No changes detected` is expected.
 
 ---
 
@@ -154,27 +158,53 @@ Frontend runs at `http://localhost:3000`
 
 ---
 
-## Submission Flow
+## Session Flow
 
 ```
-POST /api/submit/ {exercise_slug, code, session_id?}
+/disclaimer
+  → Student sets optional timer (hours + minutes)
+  → Reads exam rules, checks agreement
+  → Browser enters fullscreen
         ↓
-1. Import validator — instant check for forbidden/illegal imports
+/practice
+  → Fetches available levels from exercise bank
+  → Starts session in DB
+  → Level 1 (5%): random exercise assigned — locked in
+      → Submit → pass → Level 2
+      → Submit → fail → retry same exercise
+      → Give up → Terminate button → session ends
+  → ...up through all available levels
+  → All levels complete OR terminated OR timer runs out
+        ↓
+Session Summary screen
+  → Shows each level: exercise name, attempts, PASS/FAIL
+  → Overall score and completion %
+  → Options: Dashboard or Try Again
+```
+
+---
+
+## Submission Flow (per exercise)
+
+```
+POST /api/submit/ {exercise_slug, code, session_id}
+        ↓
+1. Import validator — instant check (forbidden/illegal imports)
         ↓
 2. 202 Accepted — submission ID returned immediately
         ↓
 3. WebSocket opens: ws/submissions/<id>/?token=<jwt>
         ↓
-4. Celery picks up task → spins up Docker container
+4. Celery picks up task → ONE Docker container spins up
         ↓
-5. Code runs against each test case (stdin → stdout)
+5. Code compiles ONCE → binary runs against all test cases
         ↓
 6. Results pushed via WebSocket:
    - Public test cases: full detail (stdin, expected, actual, error)
-   - Hidden test cases: PASS/FAIL only — input/output never revealed
+   - Hidden test cases: PASS/FAIL only — no input/output revealed
         ↓
-7. accepted → auto-advance to next exercise
-   failed   → show terminal output, student retries
+7. accepted → auto-advance to next level (after 1.5s)
+   failed   → show error in terminal, student fixes and resubmits
 ```
 
 ---
@@ -199,29 +229,13 @@ POST /api/submit/ {exercise_slug, code, session_id?}
 - **Public test cases** — shown in full on failure: input, expected output, actual output
 - **Hidden test cases** — only show `✅ Test N (hidden): PASSED` or `❌ Test N (hidden): FAILED`
 - Students never see hidden test case inputs or expected outputs, even after submission
-- Makes hardcoding the expected output impossible across multiple attempts
+- Makes hardcoding the expected output impossible
 
 ---
 
-## Adding a New Language (via Admin UI)
+## Level Progression
 
-1. Build a Docker image for the language (see `backend/docker/` for examples)
-2. Go to `/admin/languages` → **New language**
-3. Fill in: name, slug, file extension, Docker image name, timeout, memory limit
-4. Add exercises for that language via `/admin/exercises`
-
----
-
-## Adding Exercises (via Admin UI)
-
-1. Go to `/admin/exercises` → **New exercise**
-2. Fill in: name, slug, description (Markdown), difficulty %, language, checkpoint
-3. Set forbidden/allowed imports (e.g. forbidden: `fmt`, allowed: `z01`)
-4. Add test cases via **Manage test cases** — mark hidden ones appropriately
-
----
-
-## Exercise Difficulty Levels (zone01 Elementary Programming)
+Exercises are organised by difficulty percentage. The session advances level by level:
 
 | Level | % | Example exercises |
 |---|---|---|
@@ -236,49 +250,80 @@ POST /api/submit/ {exercise_slug, code, session_id?}
 | 9 | 95% | brackets, rpncalc |
 | 10 | 100% | brainfuck, grouping |
 
+Only levels that have exercises in the bank are shown. If a level has no exercises yet, it is skipped automatically.
+
+---
+
+## Admin Panel (`/admin`)
+
+Accessible to staff users only. Appears in navbar as purple "Admin" link.
+
+| Section | What you can do |
+|---|---|
+| Overview | Stats at a glance |
+| Exercises | Full CRUD — description, starter code, import rules, difficulty |
+| Test Cases | Per exercise — add/edit/delete, mark public or hidden, set order |
+| Checkpoints | Create checkpoint events, assign language |
+| Languages | Add language, set Docker image, timeout, memory limit, forbidden imports |
+| Users | View students, manage roles, enable/disable accounts |
+
+---
+
+## Adding a New Language
+
+1. Build a Docker image (see `backend/docker/` for examples)
+2. Go to `/admin/languages` → **New language**
+3. Fill in: name, slug, file extension, Docker image name, timeout, memory
+4. Add exercises for that language
+
 ---
 
 ## Deployment (VPS)
 
-Recommended: **Oracle Cloud Free Tier** (4 vCPU, 24GB RAM — genuinely free)
+Recommended: **Oracle Cloud Free Tier** (4 vCPU, 24GB RAM — free forever)
 
 ```bash
-# On the VPS
+# On the VPS (Ubuntu 22.04)
 git clone <repo>
 cd zcheck-simulator/backend
 
 # Build runner images
+cp -r /path/to/z01 docker/go-runner/z01/
 docker build -t zcheck-go-runner:latest docker/go-runner/
 docker build -t zcheck-python-runner:latest docker/python-runner/
 docker build -t zcheck-js-runner:latest docker/js-runner/
 
-# Configure .env
+# Configure environment
 cp .env.example .env && nano .env
 
-# Start
+# Start everything
 docker-compose up -d
 
-# Run migrations + seed
-docker-compose exec django python manage.py makemigrations users exercises submissions
-docker-compose exec django python manage.py migrate
+# Seed data and create admin
 docker-compose exec django python manage.py seed_go_exercises
 docker-compose exec django python manage.py createsuperuser
 
-# Build and serve frontend via Nginx
+# Build frontend
 cd ../frontend
 npm install && npm run build
-# Copy build/ to Nginx html directory or serve via docker-compose nginx service
+# Serve build/ via Nginx (already configured in docker-compose nginx service)
 ```
 
 ---
 
 ## Roadmap
 
-- [x] Django backend — models, API, auth
-- [x] WebSocket real-time submission results
-- [x] React frontend — auth, dashboard, practice session, history
-- [x] Admin UI — exercises, test cases, checkpoints, languages, users
-- [ ] Docker runner images (Go + z01, Python, JS)
-- [ ] Full exercise + test case bank (all 40+ exercises)
-- [ ] Checkpoint map — visual progression page
+- [x] Django backend — models, API, auth, JWT
+- [x] WebSocket real-time submission results (Channels + Daphne)
+- [x] Import validator — per exercise forbidden/allowed imports
+- [x] One-container Docker execution engine (compile once, run all test cases)
+- [x] React frontend — Auth, Dashboard, Practice Session, History, Checkpoint Map
+- [x] Disclaimer page with exam rules, timer setter, fullscreen
+- [x] Level-by-level session progression (pass to advance, retry or terminate on fail)
+- [x] Session timer — student-set, auto-terminates on expiry
+- [x] Session summary — per-level results, attempts, pass/fail
+- [x] Admin UI — Exercises, Test Cases, Checkpoints, Languages, Users
+- [x] docker-compose — auto-migrate and collectstatic on startup
+- [ ] Docker runner images built (pending z01 source)
+- [ ] Full exercise + test case bank (5 seeded, 40+ remaining)
 - [ ] Python and JavaScript checkpoint support

@@ -8,6 +8,7 @@ urlpatterns = [
     path('exercises/<slug:slug>/', views.ExerciseDetailView.as_view(), name='exercise_detail'),
     path('checkpoints/', views.CheckpointListView.as_view(), name='checkpoint_list'),
     path('languages/', views.LanguageListView.as_view(), name='language_list'),
+    path('levels/', views.available_levels, name='available_levels'),
     # Admin
     path('admin/exercises/', views.AdminExerciseListCreateView.as_view()),
     path('admin/exercises/<slug:slug>/', views.AdminExerciseDetailView.as_view()),

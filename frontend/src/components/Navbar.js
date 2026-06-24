@@ -12,7 +12,7 @@ export default function Navbar() {
 
   const nav = [
     { to: '/dashboard',   label: 'Dashboard' },
-    { to: '/practice',    label: 'Practice' },
+    { to: '/disclaimer',  label: 'Practice' },
     { to: '/checkpoints', label: 'Map' },
     { to: '/history',     label: 'History' },
   ];
