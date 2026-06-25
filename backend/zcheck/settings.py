@@ -147,8 +147,8 @@ CORS_ALLOW_CREDENTIALS = True
 # Celery
 CELERY_BROKER_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
 CELERY_RESULT_BACKEND = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
-CELERY_TASK_TIME_LIMIT = 30  # seconds max per task
-CELERY_TASK_SOFT_TIME_LIMIT = 20
+CELERY_TASK_TIME_LIMIT = 120  # seconds max per task
+CELERY_TASK_SOFT_TIME_LIMIT = 90
 
 # Code Runner
 RUNNER_TIMEOUT = int(os.environ.get('RUNNER_TIMEOUT', '10'))  # seconds per test case
