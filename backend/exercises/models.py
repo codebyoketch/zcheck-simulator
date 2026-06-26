@@ -2,14 +2,12 @@ from django.db import models
 
 
 class Language(models.Model):
-    """A programming language supported by the platform."""
-    name = models.CharField(max_length=50)           # e.g. "Go", "Python", "JavaScript"
-    slug = models.SlugField(unique=True)             # e.g. "go", "python", "javascript"
-    file_extension = models.CharField(max_length=10) # e.g. ".go", ".py", ".js"
-    docker_image = models.CharField(max_length=200)  # e.g. "zcheck-go-runner:latest"
+    name = models.CharField(max_length=50)
+    slug = models.SlugField(unique=True)
+    file_extension = models.CharField(max_length=10)
+    docker_image = models.CharField(max_length=200)
     timeout_seconds = models.IntegerField(default=10)
     memory_limit = models.CharField(max_length=20, default='64m')
-    # Default forbidden imports for this language (comma-separated)
     default_forbidden_imports = models.TextField(
         blank=True,
         help_text='Comma-separated. e.g. "fmt,os,net/http"'
@@ -30,14 +28,13 @@ class Language(models.Model):
 
 
 class Checkpoint(models.Model):
-    """A checkpoint event (e.g. Checkpoint 01, Final Checkpoint)."""
-    name = models.CharField(max_length=100)          # e.g. "Checkpoint 01"
-    slug = models.SlugField(unique=True)             # e.g. "checkpoint-01"
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(unique=True)
     description = models.TextField(blank=True)
     language = models.ForeignKey(
         Language, on_delete=models.PROTECT, related_name='checkpoints'
     )
-    order = models.IntegerField(default=0)           # for display ordering
+    order = models.IntegerField(default=0)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -50,10 +47,9 @@ class Checkpoint(models.Model):
 
 
 class Exercise(models.Model):
-    """A single coding exercise (e.g. countalpha, onlyz)."""
-    name = models.CharField(max_length=100)          # e.g. "countalpha"
-    slug = models.SlugField(unique=True)             # e.g. "countalpha"
-    description = models.TextField()                 # Markdown — from 01-edu README
+    name = models.CharField(max_length=100)
+    slug = models.SlugField(unique=True)
+    description = models.TextField()
     difficulty_pct = models.IntegerField(
         help_text='Difficulty percentage (5, 10, 20, 35, 50, 65, 75, 85, 95, 100)'
     )
@@ -64,23 +60,28 @@ class Exercise(models.Model):
         Checkpoint, on_delete=models.SET_NULL, null=True, blank=True,
         related_name='exercises'
     )
+    # Two-file structure (Zone01 style)
+    main_file = models.TextField(
+        blank=True,
+        help_text='main.go content — package main, imports piscine, calls functions. Read-only for students.'
+    )
+    student_filename = models.CharField(
+        max_length=100, default='solution.go',
+        help_text='Filename for student file e.g. "countalpha.go". Shown as second tab.'
+    )
     # Import control
     forbidden_imports = models.TextField(
         blank=True,
-        help_text='Comma-separated imports NOT allowed. e.g. "fmt,os". Overrides language defaults.'
+        help_text='Comma-separated imports NOT allowed.'
     )
     allowed_imports = models.TextField(
         blank=True,
-        help_text='Comma-separated imports explicitly allowed. e.g. "z01". Leave blank for no restrictions.'
+        help_text='Comma-separated imports explicitly allowed.'
     )
-    use_language_forbidden_defaults = models.BooleanField(
-        default=True,
-        help_text='If True, also applies the language-level forbidden imports.'
-    )
-    # Starter code shown in editor
+    use_language_forbidden_defaults = models.BooleanField(default=True)
     starter_code = models.TextField(
         blank=True,
-        help_text='Boilerplate code shown to student when they open the exercise.'
+        help_text='Boilerplate shown in the student editor tab.'
     )
     xp_reward = models.IntegerField(default=100)
     is_active = models.BooleanField(default=True)
@@ -88,7 +89,6 @@ class Exercise(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def get_forbidden_imports(self):
-        """Return full list of forbidden imports for this exercise."""
         imports = set()
         if self.use_language_forbidden_defaults:
             imports.update(self.language.get_forbidden_imports_list())
@@ -110,20 +110,12 @@ class Exercise(models.Model):
 
 
 class TestCase(models.Model):
-    """A single test case for an exercise."""
     exercise = models.ForeignKey(
         Exercise, on_delete=models.CASCADE, related_name='test_cases'
     )
-    # stdin fed to the program (can be empty for exercises with no input)
     stdin = models.TextField(blank=True)
-    # expected stdout
     expected_output = models.TextField()
-    # Public: shown to student on failure (input + expected + actual)
-    # Hidden: only shown as pass/fail
-    is_hidden = models.BooleanField(
-        default=False,
-        help_text='Hidden test cases only show pass/fail — no input or expected output revealed.'
-    )
+    is_hidden = models.BooleanField(default=False)
     order = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -1,12 +1,13 @@
 """
 Docker-based code execution engine.
 Compile once, run per test case — fast after first compilation.
+Supports Zone01 two-file structure: main.go + piscine package.
 """
 import subprocess
 import tempfile
 import os
 import time
-from typing import List, Dict
+from typing import List, Dict, Optional
 from dataclasses import dataclass, field
 
 HOST_APP_DIR = os.environ.get('HOST_APP_DIR', '/app')
@@ -37,15 +38,22 @@ def run_code(
     test_cases: List[Dict],
     timeout_seconds: int = 30,
     memory_limit: str = '512m',
+    main_file: Optional[str] = None,
+    student_filename: Optional[str] = None,
 ) -> RunResult:
     file_extensions = {'go': 'go', 'python': 'py', 'javascript': 'js'}
     ext = file_extensions.get(language_slug, 'txt')
-    code_file = f'solution.{ext}'
+    student_filename = student_filename or f'solution.{ext}'
 
     with tempfile.TemporaryDirectory(dir='/app') as tmpdir:
-        # Write code file
-        with open(os.path.join(tmpdir, code_file), 'w') as f:
+        # Write student file
+        with open(os.path.join(tmpdir, student_filename), 'w') as f:
             f.write(code)
+
+        # Write main.go if this is a two-file exercise
+        if main_file:
+            with open(os.path.join(tmpdir, 'main.go'), 'w') as f:
+                f.write(main_file)
 
         host_tmpdir = tmpdir.replace('/app', HOST_APP_DIR, 1)
 
@@ -53,14 +61,13 @@ def run_code(
         if language_slug == 'go':
             compile_result = _compile(
                 host_tmpdir=host_tmpdir,
-                tmpdir=tmpdir,
                 docker_image=docker_image,
-                code_file=code_file,
+                student_filename=student_filename,
                 memory_limit=memory_limit,
                 timeout_seconds=timeout_seconds,
             )
             if compile_result is not None:
-                return compile_result  # compile error — return early
+                return compile_result
 
         # ── Step 2: Run once per test case ───────────────────────────────────
         test_results = []
@@ -68,10 +75,8 @@ def run_code(
             result = _run_test_case(
                 host_tmpdir=host_tmpdir,
                 docker_image=docker_image,
-                code_file=code_file,
+                student_filename=student_filename,
                 tc=tc,
-                language_slug=language_slug,
-                memory_limit=memory_limit,
                 timeout_seconds=timeout_seconds,
             )
             test_results.append(result)
@@ -93,11 +98,7 @@ def run_code(
         )
 
 
-def _compile(host_tmpdir, tmpdir, docker_image, code_file, memory_limit, timeout_seconds):
-    """
-    Run compile.sh inside a container. Outputs binary to tmpdir/bin on the host.
-    Returns a RunResult on error, None on success.
-    """
+def _compile(host_tmpdir, docker_image, student_filename, memory_limit, timeout_seconds):
     try:
         proc = subprocess.run(
             [
@@ -106,13 +107,13 @@ def _compile(host_tmpdir, tmpdir, docker_image, code_file, memory_limit, timeout
                 '--memory-swap', memory_limit,
                 '--network', 'none',
                 '--read-only',
-                '--tmpfs', '/tmp:size=100m,exec',
+                '--tmpfs', '/tmp:size=200m,exec',
                 '--tmpfs', '/root/.cache:size=100m',
                 '--cpus', '1.0',
-                '-v', f'{host_tmpdir}:/code',   # NOT read-only — binary written here
+                '-v', f'{host_tmpdir}:/code',  # NOT read-only — binary written here
                 '--entrypoint', '/bin/sh',
                 docker_image,
-                '/compile.sh', code_file,
+                '/compile.sh', student_filename,
             ],
             capture_output=True,
             timeout=timeout_seconds,
@@ -130,11 +131,10 @@ def _compile(host_tmpdir, tmpdir, docker_image, code_file, memory_limit, timeout
             compile_output=f'❌ Compile error:\n{stderr or stdout}',
         )
 
-    return None  # success
+    return None
 
 
-def _run_test_case(host_tmpdir, docker_image, code_file, tc, language_slug, memory_limit, timeout_seconds):
-    """Run pre-compiled binary against a single test case."""
+def _run_test_case(host_tmpdir, docker_image, student_filename, tc, timeout_seconds):
     start = time.time()
     stdin_data = tc.get('stdin', '')
 
@@ -142,7 +142,7 @@ def _run_test_case(host_tmpdir, docker_image, code_file, tc, language_slug, memo
         proc = subprocess.run(
             [
                 'docker', 'run', '--rm',
-                '--memory', '64m',             # less memory needed just to run
+                '--memory', '64m',
                 '--memory-swap', '64m',
                 '--network', 'none',
                 '--read-only',
@@ -151,7 +151,7 @@ def _run_test_case(host_tmpdir, docker_image, code_file, tc, language_slug, memo
                 '--cpus', '0.5',
                 '-v', f'{host_tmpdir}:/code:ro',
                 docker_image,
-                code_file,
+                student_filename,
             ],
             input=stdin_data.encode(),
             capture_output=True,

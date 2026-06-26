@@ -69,14 +69,16 @@ def run_submission(self, submission_id: int):
 
     # Step 3: Run in Docker
     try:
-        result = run_code(
-            code=submission.code,
-            language_slug=language.slug,
-            docker_image=language.docker_image,
-            test_cases=test_cases,
-            timeout_seconds=language.timeout_seconds,
-            memory_limit=language.memory_limit,
-        )
+            result = run_code(
+                code=submission.code,
+                language_slug=language.slug,
+                docker_image=language.docker_image,
+                test_cases=test_cases,
+                timeout_seconds=language.timeout_seconds,
+                memory_limit=language.memory_limit,
+                main_file=exercise.main_file or None,
+                student_filename=exercise.student_filename or None,
+            )
     except Exception as e:
         logger.exception(f'Docker runner failed for submission {submission_id}')
         submission.status = Submission.STATUS_RUNTIME_ERROR

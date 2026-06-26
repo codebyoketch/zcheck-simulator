@@ -30,7 +30,6 @@ class CheckpointAdminSerializer(serializers.ModelSerializer):
 
 
 class TestCasePublicSerializer(serializers.ModelSerializer):
-    """For students — hidden test cases show no input/output."""
     stdin = serializers.SerializerMethodField()
     expected_output = serializers.SerializerMethodField()
 
@@ -46,14 +45,12 @@ class TestCasePublicSerializer(serializers.ModelSerializer):
 
 
 class TestCaseAdminSerializer(serializers.ModelSerializer):
-    """For admins — full access."""
     class Meta:
         model = TestCase
         fields = '__all__'
 
 
 class ExerciseSerializer(serializers.ModelSerializer):
-    """For students — no hidden test case content leaked."""
     language = LanguageSerializer(read_only=True)
     checkpoint = CheckpointSerializer(read_only=True)
     test_cases = TestCasePublicSerializer(many=True, read_only=True)
@@ -65,7 +62,8 @@ class ExerciseSerializer(serializers.ModelSerializer):
         model = Exercise
         fields = (
             'id', 'name', 'slug', 'description', 'difficulty_pct',
-            'language', 'checkpoint', 'starter_code', 'xp_reward',
+            'language', 'checkpoint', 'starter_code', 'main_file',
+            'student_filename', 'xp_reward',
             'test_cases', 'total_test_cases', 'hidden_test_cases', 'public_test_cases',
         )
 
@@ -85,7 +83,6 @@ class ExerciseAdminSerializer(serializers.ModelSerializer):
 
 
 class ExerciseListSerializer(serializers.ModelSerializer):
-    """Lightweight — for listing, no test cases."""
     language = LanguageSerializer(read_only=True)
 
     class Meta:

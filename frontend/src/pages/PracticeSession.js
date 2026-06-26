@@ -135,6 +135,7 @@ export default function PracticeSession() {
   const [searchParams] = useSearchParams();
   const navigate       = useNavigate();
   const checkpointSlug = searchParams.get('checkpoint');
+  const languageSlug   = searchParams.get('language');
   const timerSeconds   = parseInt(searchParams.get('timer') || '0');
 
   const [levels,          setLevels]         = useState([]);
@@ -151,6 +152,7 @@ export default function PracticeSession() {
   const [showSummary,     setShowSummary]     = useState(false);
   const [summaryReason,   setSummaryReason]   = useState('');
   const [showConfirm,     setShowConfirm]     = useState(false);
+  const [activeTab,       setActiveTab]       = useState('student');
 
   const termRef         = useRef(null);
   const sessionRef      = useRef(null);
@@ -161,6 +163,9 @@ export default function PracticeSession() {
   // Keep refs in sync
   useEffect(() => { levelsRef.current = levels; }, [levels]);
   useEffect(() => { levelResultsRef.current = levelResults; }, [levelResults]);
+
+  // Reset tab when exercise changes
+  useEffect(() => { setActiveTab('student'); }, [exercise?.slug]);
 
   // Timer
   useEffect(() => {
@@ -197,7 +202,8 @@ export default function PracticeSession() {
     setCurrentAttempts(0);
     try {
       const params = { difficulty_pct: difficulty };
-      if (checkpointSlug) params.checkpoint = checkpointSlug;
+      if (checkpointSlug) params.checkpoint     = checkpointSlug;
+      if (languageSlug)   params.language__slug = languageSlug;
       const { data } = await getRandomExercise(params);
       setExercise(data);
       setCode(data.starter_code || '');
@@ -206,13 +212,15 @@ export default function PracticeSession() {
     } finally {
       setLoading(false);
     }
-  }, [checkpointSlug]);
+  }, [checkpointSlug, languageSlug]);
 
   // Init
   useEffect(() => {
     const init = async () => {
       try {
-        const params = checkpointSlug ? { checkpoint: checkpointSlug } : {};
+        const params = {};
+        if (checkpointSlug) params.checkpoint = checkpointSlug;
+        if (languageSlug)   params.language   = languageSlug;
         const { data } = await getAvailableLevels(params);
         const lvls = data.levels;
         setLevels(lvls);
@@ -419,7 +427,23 @@ export default function PracticeSession() {
 
         <div className="session-right">
           <div className="editor-toolbar">
-            <span className="editor-lang mono text-muted">{exercise?.language?.name || 'Go'}</span>
+            {/* Tabs */}
+            <div className="editor-tabs">
+              {exercise?.main_file && (
+                <button
+                  className={`editor-tab mono${activeTab === 'main' ? ' active' : ''}`}
+                  onClick={() => setActiveTab('main')}
+                >
+                  main.go <span style={{ fontSize: 10, color: 'var(--text-dim)', marginLeft: 4 }}>read-only</span>
+                </button>
+              )}
+              <button
+                className={`editor-tab mono${activeTab === 'student' ? ' active' : ''}`}
+                onClick={() => setActiveTab('student')}
+              >
+                {exercise?.student_filename || 'solution.go'}
+              </button>
+            </div>
             <div className="editor-actions">
               <button className="btn btn-primary btn-sm" onClick={handleSubmit}
                 disabled={loading || submitting || !exercise}>
@@ -428,17 +452,54 @@ export default function PracticeSession() {
             </div>
           </div>
           <div className="editor-wrapper">
-            <Editor height="100%" language={exercise?.language?.slug || 'go'}
-              value={code} onChange={v => setCode(v || '')}
-              onMount={handleEditorMount} theme="zcheck"
-              options={{
-                fontSize: 14, fontFamily: "'JetBrains Mono', monospace",
-                fontLigatures: true, minimap: { enabled: false },
-                scrollBeyondLastLine: false, lineNumbers: 'on',
-                renderLineHighlight: 'line', padding: { top: 16, bottom: 16 },
-                tabSize: 4, insertSpaces: false, wordWrap: 'on',
-              }}
-            />
+            {/* main.go tab — read only */}
+            {activeTab === 'main' && exercise?.main_file && (
+              <Editor
+                height="100%"
+                language="go"
+                value={exercise.main_file}
+                onMount={handleEditorMount}
+                theme="zcheck"
+                options={{
+                  fontSize: 14, fontFamily: "'JetBrains Mono', monospace",
+                  fontLigatures: true, minimap: { enabled: false },
+                  scrollBeyondLastLine: false, lineNumbers: 'on',
+                  renderLineHighlight: 'line', padding: { top: 16, bottom: 16 },
+                  tabSize: 4, insertSpaces: false, wordWrap: 'on',
+                  readOnly: true,
+                  quickSuggestions: false,
+                  suggestOnTriggerCharacters: false,
+                  acceptSuggestionOnEnter: 'off',
+                  tabCompletion: 'off',
+                  wordBasedSuggestions: false,
+                  parameterHints: { enabled: false },
+                }}
+              />
+            )}
+            {/* Student tab — editable */}
+            {activeTab === 'student' && (
+              <Editor
+                height="100%"
+                language={exercise?.language?.slug || 'go'}
+                value={code}
+                onChange={v => setCode(v || '')}
+                onMount={handleEditorMount}
+                theme="zcheck"
+                options={{
+                  fontSize: 14, fontFamily: "'JetBrains Mono', monospace",
+                  fontLigatures: true, minimap: { enabled: false },
+                  scrollBeyondLastLine: false, lineNumbers: 'on',
+                  renderLineHighlight: 'line', padding: { top: 16, bottom: 16 },
+                  tabSize: 4, insertSpaces: false, wordWrap: 'on',
+                  quickSuggestions: false,
+                  suggestOnTriggerCharacters: false,
+                  acceptSuggestionOnEnter: 'off',
+                  tabCompletion: 'off',
+                  wordBasedSuggestions: false,
+                  parameterHints: { enabled: false },
+                }}
+              />
+            )}
           </div>
           <div className={termClass} ref={termRef}>
             <div className="terminal-header">

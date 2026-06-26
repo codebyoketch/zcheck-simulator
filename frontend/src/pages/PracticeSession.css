@@ -384,3 +384,27 @@
   padding-top: 4px;
   border-top: 1px solid var(--border);
 }
+
+.editor-tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.editor-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 6px 12px;
+}
+
+.editor-tab.active {
+  border-bottom-color: var(--teal);
+  color: var(--text);
+}
+
+.editor-tab:hover:not(.active) {
+  color: var(--text);
+}

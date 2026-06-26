@@ -142,8 +142,11 @@ def available_levels(request):
     """
     qs = Exercise.objects.filter(is_active=True)
     checkpoint_slug = request.query_params.get('checkpoint')
+    language_slug   = request.query_params.get('language')
     if checkpoint_slug:
         qs = qs.filter(checkpoint__slug=checkpoint_slug)
+    if language_slug:
+        qs = qs.filter(language__slug=language_slug)
 
     levels = list(
         qs.values_list('difficulty_pct', flat=True)
