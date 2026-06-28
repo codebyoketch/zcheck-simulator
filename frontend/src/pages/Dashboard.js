@@ -10,10 +10,10 @@ const DIFFICULTY_LEVELS = [5,10,20,35,50,65,75,85,95,100];
 
 function StatCard({ label, value, sub, accent }) {
   return (
-    <div className="stat-card card">
-      <div className="stat-value mono" style={{ color: accent || 'var(--teal)' }}>{value}</div>
-      <div className="stat-label">{label}</div>
-      {sub && <div className="stat-sub mono">{sub}</div>}
+    <div className="stat-card card" style={{ padding: '10px 14px' }}>
+      <div className="stat-value mono" style={{ color: accent || 'var(--teal)', fontSize: '1.3rem' }}>{value}</div>
+      <div className="stat-label" style={{ fontSize: '0.72rem' }}>{label}</div>
+      {sub && <div className="stat-sub mono" style={{ fontSize: '0.65rem' }}>{sub}</div>}
     </div>
   );
 }
@@ -51,6 +51,11 @@ export default function Dashboard() {
   const totalExercises = progress.length;
   const passed         = progress.filter(p => p.passed).length;
   const overallPct     = totalExercises ? Math.round((passed / totalExercises) * 100) : 0;
+
+  const passedExercises = progress.filter(p => p.passed);
+  const maxLevelAttained = passedExercises.length > 0
+    ? Math.max(...passedExercises.map(p => p.exercise.difficulty_pct))
+    : null;
 
   // Group progress by difficulty
   const byLevel = DIFFICULTY_LEVELS.map(lvl => {
@@ -108,6 +113,10 @@ export default function Dashboard() {
           <StatCard label="Total attempts"
             value={progress.reduce((s, p) => s + p.attempts, 0)}
             accent="var(--purple)" />
+          <StatCard label="Best level reached"
+            value={maxLevelAttained !== null ? `${maxLevelAttained}%` : '—'}
+            sub={maxLevelAttained !== null ? 'difficulty passed' : 'no passes yet'}
+            accent="var(--warn)" />
           <StatCard label="Checkpoints"
             value={checkpoints.length}
             sub="available"

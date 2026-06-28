@@ -250,3 +250,14 @@
   border: 1px solid;
   flex-shrink: 0;
 }
+
+.session-divider--horizontal {
+  width: 100%;
+  height: 5px;
+  cursor: row-resize;
+  flex-shrink: 0;
+}
+
+.session-divider:not(.session-divider--horizontal) {
+  cursor: col-resize;
+}
