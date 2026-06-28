@@ -73,6 +73,7 @@ services:
     volumes:
       - .:/app
       - /var/run/docker.sock:/var/run/docker.sock
+      - go_build_cache:/root/.cache/go-build
     depends_on:
       db:
         condition: service_healthy
@@ -97,3 +98,4 @@ volumes:
   redis_data:
   static_files:
   media_files:
+  go_build_cache:
