@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from django.utils import timezone
 
 
 class Session(models.Model):
@@ -27,11 +28,30 @@ class Session(models.Model):
         'exercises.Exercise', blank=True, related_name='completed_in_sessions'
     )
 
+    # Session persistence fields
+    current_exercise = models.ForeignKey(
+        'exercises.Exercise', on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='current_sessions'
+    )
+    current_level_index = models.IntegerField(default=0)
+    timer_seconds = models.IntegerField(default=0)
+    timer_started_at = models.DateTimeField(null=True, blank=True)
+    level_results = models.JSONField(default=list)
+
     @property
     def duration_seconds(self):
         if self.ended_at:
             return (self.ended_at - self.started_at).seconds
         return None
+
+    @property
+    def time_remaining(self):
+        """Calculate remaining timer seconds."""
+        if not self.timer_seconds or not self.timer_started_at:
+            return None
+        elapsed = (timezone.now() - self.timer_started_at).total_seconds()
+        remaining = self.timer_seconds - int(elapsed)
+        return max(0, remaining)
 
     def __str__(self):
         return f"Session #{self.id} — {self.user.username}"
