@@ -182,6 +182,7 @@ export default function PracticeSession() {
   const levelResultsRef = useRef([]);
   // Ref to break circular dep between saveProgress and loadExerciseForLevel
   const saveProgressRef = useRef(null);
+  const timerStarted    = useRef(false);
 
   const getTabName = (key, fallback) => tabNames[exercise?.slug]?.[key] || fallback;
   const setTabName = (key, name) => {
@@ -217,10 +218,10 @@ export default function PracticeSession() {
     window.addEventListener('mouseup', onUp, { once: true });
   };
 
-  // Timer — only starts fresh if no active session was resumed
-  // (restored timeLeft from backend overrides the URL param)
+  // Timer — starts the first time timeLeft gets a value (URL param or resumed session)
   useEffect(() => {
-    if (!timeLeft) return;
+    if (!timeLeft || timerStarted.current) return;
+    timerStarted.current = true;
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) { clearInterval(timerRef.current); handleSessionEnd('timeout'); return 0; }
@@ -228,8 +229,7 @@ export default function PracticeSession() {
       });
     }, 1000);
     return () => clearInterval(timerRef.current);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // intentionally runs once; timeLeft is set before timer starts
+  }, [timeLeft]);
 
   const handleSessionEnd = useCallback(async (reason, results) => {
     clearInterval(timerRef.current);
