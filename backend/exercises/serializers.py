@@ -86,7 +86,8 @@ class ExerciseAdminSerializer(serializers.ModelSerializer):
 
 class ExerciseListSerializer(serializers.ModelSerializer):
     language = LanguageSerializer(read_only=True)
+    checkpoint = CheckpointSerializer(read_only=True)
 
     class Meta:
         model = Exercise
-        fields = ('id', 'name', 'slug', 'difficulty_pct', 'language', 'xp_reward', 'is_active')
+        fields = ('id', 'name', 'slug', 'difficulty_pct', 'language', 'checkpoint', 'xp_reward', 'is_active')

@@ -8,6 +8,7 @@ class SubmitCodeSerializer(serializers.Serializer):
     exercise_slug = serializers.SlugField()
     code = serializers.CharField()
     session_id = serializers.IntegerField(required=False, allow_null=True)
+    exercise_started_at = serializers.DateTimeField(required=False, allow_null=True)
 
 
 class TestResultSerializer(serializers.ModelSerializer):
@@ -37,9 +38,26 @@ class SubmissionSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'exercise_name', 'exercise_slug', 'status',
             'compile_output', 'task_id', 'submitted_at', 'completed_at',
-            'test_results',
+            'exercise_started_at', 'test_results',
         )
         read_only_fields = fields
+
+
+class ExerciseHistorySerializer(serializers.ModelSerializer):
+    """Per-exercise submission history shown in the sandbox page."""
+    duration_seconds = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Submission
+        fields = (
+            'id', 'status', 'submitted_at', 'completed_at',
+            'exercise_started_at', 'duration_seconds',
+        )
+
+    def get_duration_seconds(self, obj):
+        if obj.exercise_started_at and obj.completed_at:
+            return int((obj.completed_at - obj.exercise_started_at).total_seconds())
+        return None
 
 
 class SessionSerializer(serializers.ModelSerializer):
@@ -57,3 +75,63 @@ class UserProgressSerializer(serializers.ModelSerializer):
             'exercise', 'attempts', 'passed',
             'first_attempted', 'last_attempted', 'passed_at',
         )
+
+
+# ── Admin serializers ─────────────────────────────────────────────────────────
+
+class AdminSubmissionSerializer(serializers.ModelSerializer):
+    """Full submission detail for admin views."""
+    exercise_name = serializers.CharField(source='exercise.name', read_only=True)
+    exercise_slug = serializers.CharField(source='exercise.slug', read_only=True)
+    checkpoint_name = serializers.SerializerMethodField()
+    checkpoint_slug = serializers.SerializerMethodField()
+    difficulty_pct = serializers.IntegerField(source='exercise.difficulty_pct', read_only=True)
+    username = serializers.CharField(source='user.username', read_only=True)
+    session_id = serializers.IntegerField(source='session.id', read_only=True, allow_null=True)
+    duration_seconds = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Submission
+        fields = (
+            'id', 'username', 'exercise_name', 'exercise_slug',
+            'checkpoint_name', 'checkpoint_slug', 'difficulty_pct',
+            'status', 'submitted_at', 'completed_at',
+            'exercise_started_at', 'duration_seconds',
+            'session_id', 'compile_output',
+        )
+
+    def get_checkpoint_name(self, obj):
+        return obj.exercise.checkpoint.name if obj.exercise.checkpoint else None
+
+    def get_checkpoint_slug(self, obj):
+        return obj.exercise.checkpoint.slug if obj.exercise.checkpoint else None
+
+    def get_duration_seconds(self, obj):
+        if obj.exercise_started_at and obj.completed_at:
+            return int((obj.completed_at - obj.exercise_started_at).total_seconds())
+        return None
+
+
+class AdminSessionSerializer(serializers.ModelSerializer):
+    """Full session detail for admin views."""
+    username = serializers.CharField(source='user.username', read_only=True)
+    checkpoint_name = serializers.CharField(source='checkpoint.name', read_only=True, allow_null=True)
+    checkpoint_slug = serializers.CharField(source='checkpoint.slug', read_only=True, allow_null=True)
+    duration_seconds = serializers.SerializerMethodField()
+    submission_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Session
+        fields = (
+            'id', 'username', 'checkpoint_name', 'checkpoint_slug',
+            'status', 'started_at', 'ended_at', 'duration_seconds',
+            'timer_seconds', 'level_results', 'submission_count',
+        )
+
+    def get_duration_seconds(self, obj):
+        if obj.started_at and obj.ended_at:
+            return int((obj.ended_at - obj.started_at).total_seconds())
+        return None
+
+    def get_submission_count(self, obj):
+        return obj.submissions.count()

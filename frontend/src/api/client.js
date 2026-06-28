@@ -70,8 +70,9 @@ export const getHistory         = ()                      => api.get('/history/'
 export const startSession       = (data)                  => api.post('/sessions/start/', data);
 export const endSession         = (id, data)              => api.patch(`/sessions/${id}/end/`, data);
 export const testRun            = (slug, code, mainFile)  => api.post(`/exercises/${slug}/test/`, { code, main_code: mainFile });
-export const getActiveSession   = ()         => api.get('/sessions/active/');
-export const updateSession      = (id, data) => api.patch(`/sessions/${id}/update/`, data);
+export const getActiveSession   = ()                      => api.get('/sessions/active/');
+export const updateSession      = (id, data)              => api.patch(`/sessions/${id}/update/`, data);
+export const getExerciseHistory = (slug)                  => api.get(`/submissions/history/${slug}/`);
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 export const createSubmissionSocket = (submissionId) => {

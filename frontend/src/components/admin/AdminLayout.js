@@ -9,6 +9,7 @@ const NAV = [
   { to: '/admin/checkpoints', label: 'Checkpoints', icon: '⬡' },
   { to: '/admin/languages',   label: 'Languages',   icon: '◈' },
   { to: '/admin/users',       label: 'Users',       icon: '◉' },
+  { to: '/admin/submissions', label: 'Submissions', icon: '◎' },
 ];
 
 export default function AdminLayout() {

@@ -101,6 +101,8 @@ class Submission(models.Model):
     compile_output = models.TextField(blank=True)
     # Celery task ID for polling
     task_id = models.CharField(max_length=255, blank=True)
+    # When the student first opened/loaded this exercise (sent from frontend)
+    exercise_started_at = models.DateTimeField(null=True, blank=True)
     submitted_at = models.DateTimeField(auto_now_add=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 

@@ -29,3 +29,8 @@ export const adminDeleteCheckpoint = (slug)     => api.delete(`/admin/checkpoint
 export const adminGetUsers   = (params)   => api.get('/auth/admin/users/', { params });
 export const adminGetUser    = (id)       => api.get(`/auth/admin/users/${id}/`);
 export const adminUpdateUser = (id, data) => api.put(`/auth/admin/users/${id}/`, data);
+
+// ── Submission & Session history (admin) ──────────────────────────────────────
+export const adminGetUsersList       = ()                    => api.get('/admin/users/');
+export const adminGetUserSubmissions = (userId, params)      => api.get(`/admin/users/${userId}/submissions/`, { params });
+export const adminGetUserSessions    = (userId, params)      => api.get(`/admin/users/${userId}/sessions/`, { params });
