@@ -8,10 +8,12 @@ import tempfile
 import os
 import time
 import shutil
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Optional
 from dataclasses import dataclass, field
 
 HOST_APP_DIR = os.environ.get('HOST_APP_DIR', '/app')
+GO_BUILD_CACHE = os.environ.get('GO_BUILD_CACHE', '/root/.cache/go-build')
 
 
 @dataclass
@@ -81,20 +83,26 @@ def run_code(
             if os.path.exists(bin_path):
                 os.chmod(bin_path, 0o755)
 
-        print(f"[DEBUG] tmpdir exists before run: {os.path.exists(tmpdir)}", flush=True)
-        print(f"[DEBUG] bin exists: {os.path.exists(os.path.join(tmpdir, 'bin'))}", flush=True)
+        # Run test cases in parallel
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = {
+                executor.submit(
+                    _run_test_case,
+                    host_tmpdir,
+                    docker_image,
+                    student_filename,
+                    tc,
+                    timeout_seconds,
+                    test_mode,
+                ): tc
+                for tc in test_cases
+            }
+            test_results = []
+            for future in as_completed(futures):
+                test_results.append(future.result())
 
-        test_results = []
-        for tc in test_cases:
-            result = _run_test_case(
-                host_tmpdir=host_tmpdir,
-                docker_image=docker_image,
-                student_filename=student_filename,
-                tc=tc,
-                timeout_seconds=timeout_seconds,
-                test_mode=test_mode,
-            )
-            test_results.append(result)
+        # Sort by order to maintain consistent display
+        test_results.sort(key=lambda r: r.order)
 
         if test_mode:
             output = test_results[0].actual_output if test_results else ''
@@ -136,6 +144,7 @@ def _compile(host_tmpdir, docker_image, student_filename, timeout_seconds):
                 '--tmpfs', '/tmp:size=400m,exec',
                 '--cpus', '1.0',
                 '-v', f'{host_tmpdir}:/code',
+                '-v', f'{GO_BUILD_CACHE}:/root/.cache/go-build',
                 '--entrypoint', '/bin/sh',
                 docker_image,
                 '/compile.sh', student_filename,
@@ -204,11 +213,6 @@ def _run_test_case(host_tmpdir, docker_image, student_filename, tc, timeout_seco
     elapsed_ms = int((time.time() - start) * 1000)
     stdout = proc.stdout.decode(errors='replace').strip()
     stderr = proc.stderr.decode(errors='replace').strip()
-
-    print(f"[DEBUG] run returncode: {proc.returncode}", flush=True)
-    print(f"[DEBUG] run stdout: {repr(stdout)}", flush=True)
-    print(f"[DEBUG] run stderr: {repr(stderr)}", flush=True)
-    print(f"[DEBUG] stdin_data: {repr(stdin_data)}", flush=True)
 
     if test_mode:
         return TestCaseResult(
