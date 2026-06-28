@@ -55,9 +55,15 @@ echo "[DEBUG] WORKDIR contents:" >&2
 find "$WORKDIR" -type f >&2
 cat "$WORKDIR/go.mod" >&2
 
+# Disable set -e so we can capture the build error ourselves
+set +e
 BUILD_OUTPUT=$(go build -o /code/bin . 2>&1)
 BUILD_EXIT=$?
+set -e
+
 echo "[DEBUG] build output: $BUILD_OUTPUT" >&2
+echo "[DEBUG] build exit: $BUILD_EXIT" >&2
+
 if [ $BUILD_EXIT -ne 0 ]; then
     echo "$BUILD_OUTPUT"
     exit 1

@@ -238,6 +238,10 @@ export default function PracticeSession() {
       try { await endSession(sessionRef.current.id, { status: reason === 'complete' ? 'completed' : 'abandoned' }); }
       catch {}
     }
+    // Exit fullscreen if active
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    }
     setSummaryReason(reason);
     setLevelResults(finalResults);
     setShowSummary(true);
