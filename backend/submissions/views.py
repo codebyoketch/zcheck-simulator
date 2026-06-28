@@ -129,3 +129,54 @@ def end_session(request, pk):
     session.ended_at = timezone.now()
     session.save(update_fields=['status', 'ended_at'])
     return Response(SessionSerializer(session).data)
+
+@api_view(['GET'])
+@permission_classes([permissions.IsAuthenticated])
+def active_session(request):
+    """Get the user's active session for resuming."""
+    try:
+        session = Session.objects.select_related(
+            'current_exercise', 'checkpoint'
+        ).get(user=request.user, status='active')
+    except Session.DoesNotExist:
+        return Response(None)
+
+    return Response({
+        'id': session.id,
+        'checkpoint_slug': session.checkpoint.slug if session.checkpoint else None,
+        'current_level_index': session.current_level_index,
+        'current_exercise_slug': session.current_exercise.slug if session.current_exercise else None,
+        'timer_seconds': session.timer_seconds,
+        'time_remaining': session.time_remaining,
+        'level_results': session.level_results,
+        'started_at': session.started_at,
+    })
+
+
+@api_view(['PATCH'])
+@permission_classes([permissions.IsAuthenticated])
+def update_session(request, pk):
+    """Save current session progress."""
+    try:
+        session = Session.objects.get(id=pk, user=request.user, status='active')
+    except Session.DoesNotExist:
+        return Response({'detail': 'Not found.'}, status=404)
+
+    exercise_slug = request.data.get('current_exercise_slug')
+    if exercise_slug:
+        try:
+            session.current_exercise = Exercise.objects.get(slug=exercise_slug)
+        except Exercise.DoesNotExist:
+            pass
+
+    if 'current_level_index' in request.data:
+        session.current_level_index = request.data['current_level_index']
+    if 'timer_seconds' in request.data:
+        session.timer_seconds = request.data['timer_seconds']
+        if not session.timer_started_at:
+            session.timer_started_at = timezone.now()
+    if 'level_results' in request.data:
+        session.level_results = request.data['level_results']
+
+    session.save()
+    return Response({'status': 'updated'})
