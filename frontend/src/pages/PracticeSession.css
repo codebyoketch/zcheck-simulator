@@ -408,3 +408,69 @@
 .editor-tab:hover:not(.active) {
   color: var(--text);
 }
+
+/* Resizable divider */
+.session-layout {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.session-left, .session-right {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.session-divider {
+  width: 5px;
+  background: var(--border);
+  cursor: col-resize;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.session-divider:hover {
+  background: var(--teal);
+}
+
+/* Tabs */
+.editor-tabs {
+  display: flex;
+  gap: 2px;
+}
+
+.editor-tab-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.editor-tab {
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 6px 12px;
+}
+
+.editor-tab.active {
+  border-bottom-color: var(--teal);
+  color: var(--text);
+}
+
+.editor-tab:hover:not(.active) {
+  color: var(--text);
+}
+
+.tab-rename-input {
+  background: var(--surface);
+  border: 1px solid var(--teal);
+  color: var(--text);
+  font-size: 12px;
+  padding: 4px 8px;
+  outline: none;
+  width: 120px;
+}

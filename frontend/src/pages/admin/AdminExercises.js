@@ -14,6 +14,7 @@ const EMPTY_EXERCISE = {
   language: '', checkpoint: '', forbidden_imports: '',
   allowed_imports: '', starter_code: '', xp_reward: 100,
   use_language_forbidden_defaults: true, is_active: true,
+  main_file: '', submit_main_file: '', student_filename: 'solution.go',
 };
 
 const EMPTY_TC = { stdin: '', expected_output: '', is_hidden: false, order: 1 };
@@ -279,6 +280,26 @@ function ExerciseModal({ exercise, languages, checkpoints, onSave, onClose }) {
         <label>Starter code</label>
         <textarea value={form.starter_code} onChange={set('starter_code')} rows={5}
           placeholder="package main&#10;&#10;func MyFunc() {&#10;&#9;// your code here&#10;}" />
+      </div>
+
+      <div className="field">
+        <label>Student filename (e.g. countalpha.go)</label>
+        <input className="input" value={form.student_filename} onChange={set('student_filename')}
+          placeholder="solution.go" />
+      </div>
+
+      <div className="field">
+        <label>main.go (read-only tab shown to student)</label>
+        <textarea value={form.main_file} onChange={set('main_file')} rows={8}
+          placeholder={'package main\n\nimport (\n\t"fmt"\n)\n\nfunc main() {\n\tfmt.Println(MyFunc())\n}'}
+        />
+      </div>
+
+      <div className="field">
+        <label>submit main.go (hidden — used during grading, reads from stdin)</label>
+        <textarea value={form.submit_main_file} onChange={set('submit_main_file')} rows={8}
+          placeholder={'package main\n\nimport (\n\t"bufio"\n\t"fmt"\n\t"os"\n)\n\nfunc main() {\n\tscanner := bufio.NewScanner(os.Stdin)\n\tscanner.Scan()\n\tfmt.Println(MyFunc(scanner.Text()))\n}'}
+        />
       </div>
 
       <div className="field-row">

@@ -156,7 +156,7 @@ def available_levels(request):
     return Response({'levels': levels})
 
 @api_view(['POST'])
-@permission_classes([permissions.IsAuthenticated])
+@permission_classes([IsAuthenticated])
 def test_run(request, slug):
     """
     Run student code against the visible main_file (not submit_main_file).
@@ -171,6 +171,8 @@ def test_run(request, slug):
         return Response({'detail': 'Exercise not found.'}, status=404)
 
     code = request.data.get('code', '')
+    main_code = request.data.get('main_code', None)  # editable main.go from frontend
+
     if not code:
         return Response({'detail': 'No code provided.'}, status=400)
 
@@ -179,7 +181,7 @@ def test_run(request, slug):
         'id': 0,
         'order': 1,
         'stdin': '',
-        'expected_output': '',  # we don't check output for test runs
+        'expected_output': '',
         'is_hidden': False,
     }
 
@@ -191,9 +193,9 @@ def test_run(request, slug):
             test_cases=[fake_test_case],
             timeout_seconds=exercise.language.timeout_seconds,
             memory_limit=exercise.language.memory_limit,
-            main_file=exercise.main_file or None,
+            main_file=main_code or exercise.main_file or None,  # use frontend version first
             student_filename=exercise.student_filename or None,
-            test_mode=True,  # skip pass/fail check, just return output
+            test_mode=True,
         )
     except Exception as e:
         return Response({'output': f'Runner error: {str(e)}', 'status': 'error'})

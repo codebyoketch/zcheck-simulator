@@ -2,10 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Editor from '@monaco-editor/react';
 import ReactMarkdown from 'react-markdown';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import Navbar from '../components/Navbar';
 import {
   getRandomExercise, getAvailableLevels,
-  submitCode, getSubmission, startSession, endSession,
+  submitCode, getSubmission, testRun, startSession, endSession,
   createSubmissionSocket,
 } from '../api/client';
 import './PracticeSession.css';
@@ -34,6 +33,17 @@ const MONACO_THEME = {
     'editor.selectionBackground':     '#7c3aed33',
     'editorCursor.foreground':        '#00e5a0',
   },
+};
+
+const EDITOR_OPTIONS = {
+  fontSize: 14, fontFamily: "'JetBrains Mono', monospace",
+  fontLigatures: true, minimap: { enabled: false },
+  scrollBeyondLastLine: false, lineNumbers: 'on',
+  renderLineHighlight: 'line', padding: { top: 16, bottom: 16 },
+  tabSize: 4, insertSpaces: false, wordWrap: 'on',
+  quickSuggestions: false, suggestOnTriggerCharacters: false,
+  acceptSuggestionOnEnter: 'off', tabCompletion: 'off',
+  wordBasedSuggestions: false, parameterHints: { enabled: false },
 };
 
 function formatTime(s) {
@@ -142,7 +152,9 @@ export default function PracticeSession() {
   const [currentLevelIdx, setCurrentLevelIdx] = useState(0);
   const [exercise,        setExercise]        = useState(null);
   const [code,            setCode]            = useState('');
+  const [mainCode,        setMainCode]        = useState('');
   const [submitting,      setSubmitting]      = useState(false);
+  const [testing,         setTesting]         = useState(false);
   const [terminal,        setTerminal]        = useState('// Terminal output will appear here after submission.');
   const [termStatus,      setTermStatus]      = useState(null);
   const [loading,         setLoading]         = useState(true);
@@ -154,29 +166,61 @@ export default function PracticeSession() {
   const [showConfirm,     setShowConfirm]     = useState(false);
   const [activeTab,       setActiveTab]       = useState('student');
 
+  // Resizable split
+  const [splitPct, setSplitPct] = useState(40);
+  const dragging  = useRef(false);
+  const layoutRef = useRef(null);
+
+  // Renameable tabs
+  const [tabNames, setTabNames]     = useState({});  // { slug: { main: '...', student: '...' } }
+  const [editingTab, setEditingTab] = useState(null); // 'main' | 'student' | null
+
   const termRef         = useRef(null);
   const sessionRef      = useRef(null);
   const timerRef        = useRef(null);
   const levelsRef       = useRef([]);
   const levelResultsRef = useRef([]);
 
+  const getTabName = (key, fallback) => tabNames[exercise?.slug]?.[key] || fallback;
+  const setTabName = (key, name) => {
+    setTabNames(prev => ({
+      ...prev,
+      [exercise.slug]: { ...(prev[exercise.slug] || {}), [key]: name },
+    }));
+  };
+
   // Keep refs in sync
   useEffect(() => { levelsRef.current = levels; }, [levels]);
   useEffect(() => { levelResultsRef.current = levelResults; }, [levelResults]);
 
-  // Reset tab when exercise changes
-  useEffect(() => { setActiveTab('student'); }, [exercise?.slug]);
+  // Reset tab state and mainCode when exercise changes
+  useEffect(() => {
+    setActiveTab('student');
+    setEditingTab(null);
+    setMainCode(exercise?.main_file || '');
+  }, [exercise?.slug]);
+
+  // Resizable divider
+  const onDividerMouseDown = (e) => {
+    e.preventDefault();
+    dragging.current = true;
+    const onMove = (e) => {
+      if (!dragging.current || !layoutRef.current) return;
+      const rect = layoutRef.current.getBoundingClientRect();
+      const pct  = ((e.clientX - rect.left) / rect.width) * 100;
+      setSplitPct(Math.min(Math.max(pct, 20), 70));
+    };
+    const onUp = () => { dragging.current = false; };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp, { once: true });
+  };
 
   // Timer
   useEffect(() => {
     if (!timerSeconds) return;
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(timerRef.current);
-          handleSessionEnd('timeout');
-          return 0;
-        }
+        if (prev <= 1) { clearInterval(timerRef.current); handleSessionEnd('timeout'); return 0; }
         return prev - 1;
       });
     }, 1000);
@@ -195,7 +239,7 @@ export default function PracticeSession() {
     setShowSummary(true);
   }, []);
 
-  const loadExerciseForLevel = useCallback(async (difficulty, lvls) => {
+  const loadExerciseForLevel = useCallback(async (difficulty) => {
     setLoading(true);
     setTerminal('// Terminal output will appear here after submission.');
     setTermStatus(null);
@@ -228,7 +272,7 @@ export default function PracticeSession() {
         const sessionPayload = checkpointSlug ? { checkpoint_slug: checkpointSlug } : {};
         const { data: sess } = await startSession(sessionPayload);
         sessionRef.current = sess;
-        await loadExerciseForLevel(lvls[0], lvls);
+        await loadExerciseForLevel(lvls[0]);
       } catch {
         setTerminal('// Failed to start session.');
       } finally {
@@ -238,6 +282,25 @@ export default function PracticeSession() {
     init();
   }, []);
 
+  // Test button — runs editable main_file + student code, shows raw output
+  const handleTest = async () => {
+    if (!exercise || testing || submitting) return;
+    setTesting(true);
+    setTermStatus(null);
+    setTerminal('// Running...');
+    try {
+      const { data } = await testRun(exercise.slug, code, mainCode);
+      setTerminal(data.output || '(no output)');
+      if (data.status === 'compile_error') setTermStatus('fail');
+      else setTermStatus(null);
+    } catch (err) {
+      setTerminal(`// Test failed: ${err.response?.data?.detail || err.message}`);
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  // Submit button — runs submit_main_file against graded test cases
   const handleSubmit = async () => {
     if (!exercise || submitting) return;
     setSubmitting(true);
@@ -275,22 +338,17 @@ export default function PracticeSession() {
           } else {
             setTimeout(() => {
               setCurrentLevelIdx(nextIdx);
-              loadExerciseForLevel(levelsRef.current[nextIdx], levelsRef.current);
+              loadExerciseForLevel(levelsRef.current[nextIdx]);
             }, 1500);
           }
         }
         setSubmitting(false);
       };
 
-      // WebSocket — primary delivery
       const ws = createSubmissionSocket(sub.id);
-      ws.onmessage = (event) => {
-        handleResult(JSON.parse(event.data));
-        ws.close();
-      };
-      ws.onerror = () => { ws.close(); };
+      ws.onmessage = (event) => { handleResult(JSON.parse(event.data)); ws.close(); };
+      ws.onerror   = () => { ws.close(); };
 
-      // Polling fallback — kicks in if WebSocket doesn't deliver
       const pollInterval = setInterval(async () => {
         if (resultReceived) { clearInterval(pollInterval); return; }
         try {
@@ -302,7 +360,6 @@ export default function PracticeSession() {
         } catch {}
       }, 3000);
 
-      // Clear poll after 2 minutes max
       setTimeout(() => {
         if (!resultReceived) {
           clearInterval(pollInterval);
@@ -354,17 +411,12 @@ export default function PracticeSession() {
               <button className="modal-close" onClick={() => setShowConfirm(false)}>✕</button>
             </div>
             <div className="modal-body">
-              <p style={{ fontSize: 13, color: 'var(--text)' }}>
-                This will end your session. Your progress will be shown in the summary.
-              </p>
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 8 }}>
-                Come back when you're better prepared.
-              </p>
+              <p style={{ fontSize: 13, color: 'var(--text)' }}>This will end your session.</p>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 8 }}>Come back when you're better prepared.</p>
             </div>
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => setShowConfirm(false)}>Keep going</button>
-              <button className="btn" style={{ background: 'var(--fail)', color: '#fff' }}
-                onClick={confirmTerminate}>Terminate</button>
+              <button className="btn" style={{ background: 'var(--fail)', color: '#fff' }} onClick={confirmTerminate}>Terminate</button>
             </div>
           </div>
         </div>
@@ -393,15 +445,16 @@ export default function PracticeSession() {
         </div>
       </div>
 
-      <div className="session-layout">
-        <div className="session-left">
+      {/* Main layout — resizable */}
+      <div className="session-layout" ref={layoutRef}>
+
+        {/* Left panel */}
+        <div className="session-left" style={{ width: `${splitPct}%` }}>
           <div className="session-left-header">
             {exercise && (
               <>
                 <span className="exercise-name mono">{exercise.name}</span>
-                <span className="diff-badge mono">
-                  {exercise.difficulty_pct}%
-                </span>
+                <span className="diff-badge mono">{exercise.difficulty_pct}%</span>
               </>
             )}
           </div>
@@ -425,55 +478,87 @@ export default function PracticeSession() {
           )}
         </div>
 
-        <div className="session-right">
+        {/* Resizable divider */}
+        <div className="session-divider" onMouseDown={onDividerMouseDown} />
+
+        {/* Right panel */}
+        <div className="session-right" style={{ width: `${100 - splitPct}%` }}>
           <div className="editor-toolbar">
-            {/* Tabs */}
             <div className="editor-tabs">
+              {/* main.go tab — editable, renameable */}
               {exercise?.main_file && (
-                <button
-                  className={`editor-tab mono${activeTab === 'main' ? ' active' : ''}`}
-                  onClick={() => setActiveTab('main')}
-                >
-                  main.go <span style={{ fontSize: 10, color: 'var(--text-dim)', marginLeft: 4 }}>read-only</span>
+                <div className="editor-tab-wrap">
+                  {editingTab === 'main' ? (
+                    <input
+                      className="tab-rename-input mono"
+                      defaultValue={getTabName('main', 'main.go')}
+                      autoFocus
+                      onBlur={e => { setTabName('main', e.target.value || 'main.go'); setEditingTab(null); }}
+                      onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditingTab(null); }}
+                    />
+                  ) : (
+                    <button
+                      className={`editor-tab mono${activeTab === 'main' ? ' active' : ''}`}
+                      onClick={() => setActiveTab('main')}
+                      onDoubleClick={() => setEditingTab('main')}
+                      title="Double-click to rename"
+                    >
+                      {getTabName('main', 'main.go')}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Student tab — renameable */}
+              <div className="editor-tab-wrap">
+                {editingTab === 'student' ? (
+                  <input
+                    className="tab-rename-input mono"
+                    defaultValue={getTabName('student', exercise?.student_filename || 'solution.go')}
+                    autoFocus
+                    onBlur={e => { setTabName('student', e.target.value || exercise?.student_filename || 'solution.go'); setEditingTab(null); }}
+                    onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditingTab(null); }}
+                  />
+                ) : (
+                  <button
+                    className={`editor-tab mono${activeTab === 'student' ? ' active' : ''}`}
+                    onClick={() => setActiveTab('student')}
+                    onDoubleClick={() => setEditingTab('student')}
+                    title="Double-click to rename"
+                  >
+                    {getTabName('student', exercise?.student_filename || 'solution.go')}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="editor-actions">
+              {/* Test button — runs editable main_file + student code */}
+              {exercise?.main_file && (
+                <button className="btn btn-ghost btn-sm" onClick={handleTest}
+                  disabled={loading || testing || submitting || !exercise}>
+                  {testing ? <><span className="spinner" /> Testing...</> : 'Test'}
                 </button>
               )}
-              <button
-                className={`editor-tab mono${activeTab === 'student' ? ' active' : ''}`}
-                onClick={() => setActiveTab('student')}
-              >
-                {exercise?.student_filename || 'solution.go'}
-              </button>
-            </div>
-            <div className="editor-actions">
+              {/* Submit button — runs submit_main_file against graded test cases */}
               <button className="btn btn-primary btn-sm" onClick={handleSubmit}
                 disabled={loading || submitting || !exercise}>
                 {submitting ? <><span className="spinner" /> Running...</> : 'Submit'}
               </button>
             </div>
           </div>
+
           <div className="editor-wrapper">
-            {/* main.go tab — read only */}
+            {/* main.go tab — now editable, tracks mainCode state */}
             {activeTab === 'main' && exercise?.main_file && (
               <Editor
                 height="100%"
                 language="go"
-                value={exercise.main_file}
+                value={mainCode}
+                onChange={v => setMainCode(v || '')}
                 onMount={handleEditorMount}
                 theme="zcheck"
-                options={{
-                  fontSize: 14, fontFamily: "'JetBrains Mono', monospace",
-                  fontLigatures: true, minimap: { enabled: false },
-                  scrollBeyondLastLine: false, lineNumbers: 'on',
-                  renderLineHighlight: 'line', padding: { top: 16, bottom: 16 },
-                  tabSize: 4, insertSpaces: false, wordWrap: 'on',
-                  readOnly: true,
-                  quickSuggestions: false,
-                  suggestOnTriggerCharacters: false,
-                  acceptSuggestionOnEnter: 'off',
-                  tabCompletion: 'off',
-                  wordBasedSuggestions: false,
-                  parameterHints: { enabled: false },
-                }}
+                options={EDITOR_OPTIONS}
               />
             )}
             {/* Student tab — editable */}
@@ -485,22 +570,11 @@ export default function PracticeSession() {
                 onChange={v => setCode(v || '')}
                 onMount={handleEditorMount}
                 theme="zcheck"
-                options={{
-                  fontSize: 14, fontFamily: "'JetBrains Mono', monospace",
-                  fontLigatures: true, minimap: { enabled: false },
-                  scrollBeyondLastLine: false, lineNumbers: 'on',
-                  renderLineHighlight: 'line', padding: { top: 16, bottom: 16 },
-                  tabSize: 4, insertSpaces: false, wordWrap: 'on',
-                  quickSuggestions: false,
-                  suggestOnTriggerCharacters: false,
-                  acceptSuggestionOnEnter: 'off',
-                  tabCompletion: 'off',
-                  wordBasedSuggestions: false,
-                  parameterHints: { enabled: false },
-                }}
+                options={EDITOR_OPTIONS}
               />
             )}
           </div>
+
           <div className={termClass} ref={termRef}>
             <div className="terminal-header">
               <span className="mono" style={{ fontSize: 11, color: 'var(--text-dim)' }}>TERMINAL</span>
