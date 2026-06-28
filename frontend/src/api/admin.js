@@ -28,7 +28,7 @@ export const adminDeleteCheckpoint = (slug)     => api.delete(`/admin/checkpoint
 // ── Users ─────────────────────────────────────────────────────────────────────
 export const adminGetUsers        = (params)      => api.get('/auth/admin/users/', { params });
 export const adminGetUser         = (id)          => api.get(`/auth/admin/users/${id}/`);
-export const adminUpdateUser      = (id, data)    => api.put(`/auth/admin/users/${id}/`, data);
+export const adminUpdateUser      = (id, data)    => api.patch(`/auth/admin/users/${id}/`, data);
 export const adminResetPassword   = (id, data)    => api.post(`/auth/admin/users/${id}/reset-password/`, data);
 
 // ── Submission & Session history (admin) ──────────────────────────────────────

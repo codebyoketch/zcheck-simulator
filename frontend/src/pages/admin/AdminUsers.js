@@ -189,6 +189,71 @@ function UserModal({ user, onSave, onClose }) {
   );
 }
 
+// ── Code viewer modal ─────────────────────────────────────────────────────────
+function CodeViewerModal({ submission, onClose }) {
+  return (
+    <Modal
+      title={`${submission.exercise_name} — submission #${submission.id}`}
+      onClose={onClose}
+      footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <StatusBadge status={submission.status} />
+          <span className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            {fmtDate(submission.submitted_at)}
+          </span>
+          {submission.duration_seconds != null && (
+            <span className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {fmtDuration(submission.duration_seconds)}
+            </span>
+          )}
+          {submission.checkpoint_name && (
+            <span className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {submission.checkpoint_name}
+            </span>
+          )}
+        </div>
+
+        {submission.compile_output && (
+          <div style={{
+            background: 'var(--bg-panel)',
+            border: '1px solid var(--fail)',
+            borderRadius: 4,
+            padding: '8px 12px',
+          }}>
+            <div className="mono" style={{ fontSize: 10, color: 'var(--fail)', marginBottom: 4 }}>COMPILE OUTPUT</div>
+            <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: 11, color: 'var(--text)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+              {submission.compile_output}
+            </pre>
+          </div>
+        )}
+
+        <div style={{
+          background: 'var(--bg-panel)',
+          border: '1px solid var(--border)',
+          borderRadius: 4,
+          padding: '8px 12px',
+        }}>
+          <div className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>CODE</div>
+          <pre style={{
+            margin: 0,
+            fontFamily: 'monospace',
+            fontSize: 12,
+            color: 'var(--text)',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-all',
+            maxHeight: 480,
+            overflowY: 'auto',
+          }}>
+            {submission.code || '— no code recorded —'}
+          </pre>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Submission history panel ──────────────────────────────────────────────────
 const SUBMISSION_STATUSES = ['accepted','wrong_answer','compile_error','runtime_error','time_limit','illegal_import'];
 const SESSION_STATUSES    = ['active','completed','abandoned'];
@@ -206,6 +271,7 @@ function UserHistoryPanel({ user, checkpoints }) {
   const [submissions,setSubmissions] = useState([]);
   const [sessions,   setSessions]   = useState([]);
   const [loading,    setLoading]    = useState(false);
+  const [viewingSub, setViewingSub] = useState(null);
   const [filters,    setFilters]    = useState({
     checkpoint: '', exercise: '', date_from: '', date_to: '', status: '', sort: '-submitted_at',
   });
@@ -320,6 +386,7 @@ function UserHistoryPanel({ user, checkpoints }) {
                   <th className="mono">Submitted</th>
                   <th className="mono">Duration</th>
                   <th className="mono">Session</th>
+                  <th className="mono"></th>
                 </tr>
               </thead>
               <tbody>
@@ -334,6 +401,15 @@ function UserHistoryPanel({ user, checkpoints }) {
                     <td className="mono" style={{ fontSize: 11 }}>{fmtDuration(s.duration_seconds)}</td>
                     <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                       {s.session_id ? `#${s.session_id}` : 'Sandbox'}
+                    </td>
+                    <td>
+                      <button
+                        className="btn-icon"
+                        onClick={() => setViewingSub(s)}
+                        title="View code"
+                      >
+                        {'</>'}
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -373,6 +449,14 @@ function UserHistoryPanel({ user, checkpoints }) {
           )
         )}
       </div>
+
+      {/* Code viewer modal */}
+      {viewingSub && (
+        <CodeViewerModal
+          submission={viewingSub}
+          onClose={() => setViewingSub(null)}
+        />
+      )}
     </div>
   );
 }
@@ -383,16 +467,21 @@ export default function AdminUsers() {
   const [loading,     setLoading]     = useState(true);
   const [search,      setSearch]      = useState('');
   const [modal,       setModal]       = useState(null);
-  const [expanded,    setExpanded]    = useState(null); // user id of expanded row
+  const [expanded,    setExpanded]    = useState(null);
   const [checkpoints, setCheckpoints] = useState([]);
   const searchRef = useRef();
 
   const load = useCallback(() => {
     setLoading(true);
-    adminGetUsers({ search }).then(r => setUsers(r.data.results || r.data)).finally(() => setLoading(false));
+    adminGetUsers({ search })
+      .then(r => setUsers(r.data.results || r.data))
+      .finally(() => setLoading(false));
   }, [search]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const t = setTimeout(load, 350);
+    return () => clearTimeout(t);
+  }, [load]);
 
   useEffect(() => {
     adminGetCheckpoints().then(r => setCheckpoints(r.data || [])).catch(() => {});
@@ -480,7 +569,6 @@ export default function AdminUsers() {
                     </td>
                   </tr>
 
-                  {/* Expanded history panel */}
                   {expanded === u.id && (
                     <tr className="user-history-row">
                       <td colSpan={9} style={{ padding: 0 }}>

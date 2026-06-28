@@ -91,9 +91,14 @@ export default function Dashboard() {
             </h1>
             <p className="dash-sub text-muted">Track your checkpoint preparation progress.</p>
           </div>
-          <button className="btn btn-primary dash-cta" onClick={() => navigate('/disclaimer')}>
-            Start Practice →
-          </button>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <button className="btn btn-ghost" onClick={() => navigate('/sandbox')}>
+              Sandbox
+            </button>
+            <button className="btn btn-primary dash-cta" onClick={() => navigate('/disclaimer')}>
+              Start Practice →
+            </button>
+          </div>
         </div>
 
         {/* Stats row */}

@@ -97,7 +97,7 @@ class AdminSubmissionSerializer(serializers.ModelSerializer):
             'checkpoint_name', 'checkpoint_slug', 'difficulty_pct',
             'status', 'submitted_at', 'completed_at',
             'exercise_started_at', 'duration_seconds',
-            'session_id', 'compile_output',
+            'session_id', 'compile_output', 'code',
         )
 
     def get_checkpoint_name(self, obj):
