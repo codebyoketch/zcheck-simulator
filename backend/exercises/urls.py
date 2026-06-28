@@ -6,6 +6,7 @@ urlpatterns = [
     path('exercises/', views.ExerciseListView.as_view(), name='exercise_list'),
     path('exercises/random/', views.random_exercise, name='random_exercise'),
     path('exercises/<slug:slug>/', views.ExerciseDetailView.as_view(), name='exercise_detail'),
+    path('exercises/<slug:slug>/test/', views.test_run, name='test_run'),  # ← new
     path('checkpoints/', views.CheckpointListView.as_view(), name='checkpoint_list'),
     path('languages/', views.LanguageListView.as_view(), name='language_list'),
     path('levels/', views.available_levels, name='available_levels'),

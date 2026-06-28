@@ -48,9 +48,11 @@ class TestCaseAdminSerializer(serializers.ModelSerializer):
     class Meta:
         model = TestCase
         fields = '__all__'
+        read_only_fields = ('exercise',)
 
 
 class ExerciseSerializer(serializers.ModelSerializer):
+    """Student-facing — submit_main_file is intentionally excluded."""
     language = LanguageSerializer(read_only=True)
     checkpoint = CheckpointSerializer(read_only=True)
     test_cases = TestCasePublicSerializer(many=True, read_only=True)

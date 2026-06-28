@@ -154,3 +154,51 @@ def available_levels(request):
         .order_by('difficulty_pct')
     )
     return Response({'levels': levels})
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def test_run(request, slug):
+    """
+    Run student code against the visible main_file (not submit_main_file).
+    No test cases — just compile and run, return raw output.
+    Used by the Test button in the frontend.
+    """
+    from runner.docker_runner import run_code
+
+    try:
+        exercise = Exercise.objects.select_related('language').get(slug=slug, is_active=True)
+    except Exercise.DoesNotExist:
+        return Response({'detail': 'Exercise not found.'}, status=404)
+
+    code = request.data.get('code', '')
+    if not code:
+        return Response({'detail': 'No code provided.'}, status=400)
+
+    # Use a single fake test case with no stdin and no expected output check
+    fake_test_case = {
+        'id': 0,
+        'order': 1,
+        'stdin': '',
+        'expected_output': '',  # we don't check output for test runs
+        'is_hidden': False,
+    }
+
+    try:
+        result = run_code(
+            code=code,
+            language_slug=exercise.language.slug,
+            docker_image=exercise.language.docker_image,
+            test_cases=[fake_test_case],
+            timeout_seconds=exercise.language.timeout_seconds,
+            memory_limit=exercise.language.memory_limit,
+            main_file=exercise.main_file or None,
+            student_filename=exercise.student_filename or None,
+            test_mode=True,  # skip pass/fail check, just return output
+        )
+    except Exception as e:
+        return Response({'output': f'Runner error: {str(e)}', 'status': 'error'})
+
+    return Response({
+        'output': result.compile_output,
+        'status': result.status,
+    })

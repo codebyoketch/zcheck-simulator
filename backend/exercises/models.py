@@ -8,10 +8,7 @@ class Language(models.Model):
     docker_image = models.CharField(max_length=200)
     timeout_seconds = models.IntegerField(default=10)
     memory_limit = models.CharField(max_length=20, default='64m')
-    default_forbidden_imports = models.TextField(
-        blank=True,
-        help_text='Comma-separated. e.g. "fmt,os,net/http"'
-    )
+    default_forbidden_imports = models.TextField(blank=True)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -31,9 +28,7 @@ class Checkpoint(models.Model):
     name = models.CharField(max_length=100)
     slug = models.SlugField(unique=True)
     description = models.TextField(blank=True)
-    language = models.ForeignKey(
-        Language, on_delete=models.PROTECT, related_name='checkpoints'
-    )
+    language = models.ForeignKey(Language, on_delete=models.PROTECT, related_name='checkpoints')
     order = models.IntegerField(default=0)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -50,39 +45,28 @@ class Exercise(models.Model):
     name = models.CharField(max_length=100)
     slug = models.SlugField(unique=True)
     description = models.TextField()
-    difficulty_pct = models.IntegerField(
-        help_text='Difficulty percentage (5, 10, 20, 35, 50, 65, 75, 85, 95, 100)'
-    )
-    language = models.ForeignKey(
-        Language, on_delete=models.PROTECT, related_name='exercises'
-    )
+    difficulty_pct = models.IntegerField()
+    language = models.ForeignKey(Language, on_delete=models.PROTECT, related_name='exercises')
     checkpoint = models.ForeignKey(
-        Checkpoint, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name='exercises'
+        Checkpoint, on_delete=models.SET_NULL, null=True, blank=True, related_name='exercises'
     )
     # Two-file structure (Zone01 style)
     main_file = models.TextField(
         blank=True,
-        help_text='main.go content — package main, imports piscine, calls functions. Read-only for students.'
+        help_text='main.go shown to student as read-only tab. Uses hardcoded calls for Test button.'
+    )
+    submit_main_file = models.TextField(
+        blank=True,
+        help_text='main.go used during Submit — reads from stdin for proper test case grading. Hidden from student.'
     )
     student_filename = models.CharField(
         max_length=100, default='solution.go',
-        help_text='Filename for student file e.g. "countalpha.go". Shown as second tab.'
+        help_text='Filename for student file e.g. "countalpha.go".'
     )
-    # Import control
-    forbidden_imports = models.TextField(
-        blank=True,
-        help_text='Comma-separated imports NOT allowed.'
-    )
-    allowed_imports = models.TextField(
-        blank=True,
-        help_text='Comma-separated imports explicitly allowed.'
-    )
+    forbidden_imports = models.TextField(blank=True)
+    allowed_imports = models.TextField(blank=True)
     use_language_forbidden_defaults = models.BooleanField(default=True)
-    starter_code = models.TextField(
-        blank=True,
-        help_text='Boilerplate shown in the student editor tab.'
-    )
+    starter_code = models.TextField(blank=True)
     xp_reward = models.IntegerField(default=100)
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -110,9 +94,7 @@ class Exercise(models.Model):
 
 
 class TestCase(models.Model):
-    exercise = models.ForeignKey(
-        Exercise, on_delete=models.CASCADE, related_name='test_cases'
-    )
+    exercise = models.ForeignKey(Exercise, on_delete=models.CASCADE, related_name='test_cases')
     stdin = models.TextField(blank=True)
     expected_output = models.TextField()
     is_hidden = models.BooleanField(default=False)

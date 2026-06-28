@@ -77,6 +77,7 @@ def run_submission(self, submission_id: int):
                 timeout_seconds=language.timeout_seconds,
                 memory_limit=language.memory_limit,
                 main_file=exercise.main_file or None,
+                submit_main_file=exercise.submit_main_file or None,
                 student_filename=exercise.student_filename or None,
             )
     except Exception as e:

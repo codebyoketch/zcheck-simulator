@@ -1,6 +1,4 @@
 #!/bin/sh
-# Compile only — called once per submission
-# Handles two-file Zone01 structure: main.go (platform) + student file (piscine package)
 set -e
 
 STUDENT_FILE=${1:-solution.go}
@@ -14,40 +12,53 @@ export GOMODCACHE=/go/pkg/mod
 export GONOSUMCHECK="*"
 export GONOSUMDB="*"
 export GOPROXY="off"
+export GOFLAGS="-mod=mod"
 
-# ── Case 1: Two-file structure (main_file present) ───────────────────────────
+echo "[DEBUG] files in /code:" >&2
+ls -la /code/ >&2
+
 if [ -f "/code/main.go" ]; then
-    # main.go goes in root — package main, imports "piscine"
     cp /code/main.go "$WORKDIR/main.go"
-
-    # Student file goes in piscine/ subdir — replace "package piscine" with "package piscine"
     cp "/code/$STUDENT_FILE" "$WORKDIR/piscine/$STUDENT_FILE"
+    echo "[DEBUG] main.go contents:" >&2
+    cat "$WORKDIR/main.go" >&2
 
-    # Set up piscine submodule
-    cd "$WORKDIR/piscine"
-    go mod init piscine 2>/dev/null || true
-    go get github.com/01-edu/z01@v0.1.0 2>/dev/null || true
-    go mod tidy -e 2>/dev/null || true
+    # Piscine module
+    cat > "$WORKDIR/piscine/go.mod" <<'EOF'
+module piscine
 
-    # Set up main module with replace directive pointing to local piscine
-    cd "$WORKDIR"
-    go mod init solution 2>/dev/null || true
-    # Add replace directive so "piscine" resolves to ./piscine
-    echo 'require piscine v0.0.0' >> go.mod
-    echo 'replace piscine => ./piscine' >> go.mod
-    go mod tidy -e 2>/dev/null || true
+go 1.22
+EOF
 
-# ── Case 2: Single-file structure (no main.go) ───────────────────────────────
+    # Main module — write go.mod manually with replace directive
+    cat > "$WORKDIR/go.mod" <<'EOF'
+module solution
+
+go 1.22
+
+require piscine v0.0.0
+
+replace piscine => ./piscine
+EOF
+
 else
     cp "/code/$STUDENT_FILE" "$WORKDIR/main.go"
-    cd "$WORKDIR"
-    go mod init solution 2>/dev/null || true
-    go get github.com/01-edu/z01@v0.1.0 2>/dev/null || true
-    go mod tidy -e 2>/dev/null || true
+    cat > "$WORKDIR/go.mod" <<'EOF'
+module solution
+
+go 1.22
+EOF
 fi
 
-# Compile binary into /code/bin so host can access it
 cd "$WORKDIR"
-if ! go build -o /code/bin . 2>&1; then
+echo "[DEBUG] WORKDIR contents:" >&2
+find "$WORKDIR" -type f >&2
+cat "$WORKDIR/go.mod" >&2
+
+BUILD_OUTPUT=$(go build -o /code/bin . 2>&1)
+BUILD_EXIT=$?
+echo "[DEBUG] build output: $BUILD_OUTPUT" >&2
+if [ $BUILD_EXIT -ne 0 ]; then
+    echo "$BUILD_OUTPUT"
     exit 1
 fi

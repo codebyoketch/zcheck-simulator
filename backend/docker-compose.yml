@@ -15,6 +15,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    command: redis-server --timeout 0 --tcp-keepalive 60
     volumes:
       - redis_data:/data
     healthcheck:
@@ -41,6 +42,7 @@ services:
       - REDIS_URL=redis://redis:6379/0
       - ALLOWED_HOSTS=localhost 127.0.0.1 ${DOMAIN:-localhost}
       - CORS_ALLOWED_ORIGINS=http://localhost:3000 https://${DOMAIN:-localhost}
+      - HOST_APP_DIR=${PWD}
     volumes:
       - .:/app
       - static_files:/app/staticfiles

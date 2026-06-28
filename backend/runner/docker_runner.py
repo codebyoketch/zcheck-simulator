@@ -1,12 +1,13 @@
 """
 Docker-based code execution engine.
 Compile once, run per test case — fast after first compilation.
-Supports Zone01 two-file structure: main.go + piscine package.
+Supports Zone01 two-file structure: main.go + student file.
 """
 import subprocess
 import tempfile
 import os
 import time
+import shutil
 from typing import List, Dict, Optional
 from dataclasses import dataclass, field
 
@@ -19,6 +20,7 @@ class TestCaseResult:
     order: int
     passed: bool
     actual_output: str
+    expected_output: str
     error_output: str
     execution_time_ms: int
     is_hidden: bool
@@ -39,37 +41,49 @@ def run_code(
     timeout_seconds: int = 30,
     memory_limit: str = '512m',
     main_file: Optional[str] = None,
+    submit_main_file: Optional[str] = None,
     student_filename: Optional[str] = None,
+    test_mode: bool = False,
 ) -> RunResult:
     file_extensions = {'go': 'go', 'python': 'py', 'javascript': 'js'}
     ext = file_extensions.get(language_slug, 'txt')
     student_filename = student_filename or f'solution.{ext}'
 
-    with tempfile.TemporaryDirectory(dir='/app') as tmpdir:
-        # Write student file
+    if test_mode:
+        active_main = main_file
+    else:
+        active_main = submit_main_file or main_file
+
+    tmpdir = tempfile.mkdtemp(dir='/app')
+    try:
         with open(os.path.join(tmpdir, student_filename), 'w') as f:
             f.write(code)
 
-        # Write main.go if this is a two-file exercise
-        if main_file:
+        if active_main:
             with open(os.path.join(tmpdir, 'main.go'), 'w') as f:
-                f.write(main_file)
+                f.write(active_main)
 
         host_tmpdir = tmpdir.replace('/app', HOST_APP_DIR, 1)
 
-        # ── Step 1: Compile once ─────────────────────────────────────────────
         if language_slug == 'go':
             compile_result = _compile(
                 host_tmpdir=host_tmpdir,
                 docker_image=docker_image,
                 student_filename=student_filename,
-                memory_limit=memory_limit,
                 timeout_seconds=timeout_seconds,
             )
             if compile_result is not None:
                 return compile_result
 
-        # ── Step 2: Run once per test case ───────────────────────────────────
+            # Fix permissions so Docker can read the tmpdir and bin
+            os.chmod(tmpdir, 0o755)
+            bin_path = os.path.join(tmpdir, 'bin')
+            if os.path.exists(bin_path):
+                os.chmod(bin_path, 0o755)
+
+        print(f"[DEBUG] tmpdir exists before run: {os.path.exists(tmpdir)}", flush=True)
+        print(f"[DEBUG] bin exists: {os.path.exists(os.path.join(tmpdir, 'bin'))}", flush=True)
+
         test_results = []
         for tc in test_cases:
             result = _run_test_case(
@@ -78,8 +92,18 @@ def run_code(
                 student_filename=student_filename,
                 tc=tc,
                 timeout_seconds=timeout_seconds,
+                test_mode=test_mode,
             )
             test_results.append(result)
+
+        if test_mode:
+            output = test_results[0].actual_output if test_results else ''
+            error  = test_results[0].error_output  if test_results else ''
+            return RunResult(
+                status='test_run',
+                compile_output=output or error or '(no output)',
+                test_results=test_results,
+            )
 
         all_passed = all(r.passed for r in test_results)
         has_tle    = any('time limit' in r.error_output.lower() for r in test_results)
@@ -96,21 +120,22 @@ def run_code(
             compile_output=_build_terminal_output(test_results),
             test_results=test_results,
         )
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-def _compile(host_tmpdir, docker_image, student_filename, memory_limit, timeout_seconds):
+def _compile(host_tmpdir, docker_image, student_filename, timeout_seconds):
     try:
         proc = subprocess.run(
             [
                 'docker', 'run', '--rm',
-                '--memory', memory_limit,
-                '--memory-swap', memory_limit,
+                '-i',
+                '--memory', '1g',
+                '--memory-swap', '1g',
                 '--network', 'none',
-                '--read-only',
-                '--tmpfs', '/tmp:size=200m,exec',
-                '--tmpfs', '/root/.cache:size=100m',
+                '--tmpfs', '/tmp:size=400m,exec',
                 '--cpus', '1.0',
-                '-v', f'{host_tmpdir}:/code',  # NOT read-only — binary written here
+                '-v', f'{host_tmpdir}:/code',
                 '--entrypoint', '/bin/sh',
                 docker_image,
                 '/compile.sh', student_filename,
@@ -123,18 +148,18 @@ def _compile(host_tmpdir, docker_image, student_filename, memory_limit, timeout_
     except Exception as e:
         return RunResult(status='compile_error', compile_output=f'❌ Compile runner error: {str(e)}')
 
+    compile_stderr = proc.stderr.decode(errors='replace').strip()
+    compile_stdout = proc.stdout.decode(errors='replace').strip()
+
     if proc.returncode != 0:
-        stderr = proc.stderr.decode(errors='replace').strip()
-        stdout = proc.stdout.decode(errors='replace').strip()
         return RunResult(
             status='compile_error',
-            compile_output=f'❌ Compile error:\n{stderr or stdout}',
+            compile_output=f'❌ Compile error:\n{compile_stderr or compile_stdout}',
         )
-
     return None
 
 
-def _run_test_case(host_tmpdir, docker_image, student_filename, tc, timeout_seconds):
+def _run_test_case(host_tmpdir, docker_image, student_filename, tc, timeout_seconds, test_mode=False):
     start = time.time()
     stdin_data = tc.get('stdin', '')
 
@@ -142,6 +167,7 @@ def _run_test_case(host_tmpdir, docker_image, student_filename, tc, timeout_seco
         proc = subprocess.run(
             [
                 'docker', 'run', '--rm',
+                '-i',
                 '--memory', '64m',
                 '--memory-swap', '64m',
                 '--network', 'none',
@@ -151,7 +177,6 @@ def _run_test_case(host_tmpdir, docker_image, student_filename, tc, timeout_seco
                 '--cpus', '0.5',
                 '-v', f'{host_tmpdir}:/code:ro',
                 docker_image,
-                student_filename,
             ],
             input=stdin_data.encode(),
             capture_output=True,
@@ -161,31 +186,50 @@ def _run_test_case(host_tmpdir, docker_image, student_filename, tc, timeout_seco
         return TestCaseResult(
             test_case_id=tc['id'], order=tc['order'],
             passed=False, actual_output='',
+            expected_output=tc.get('expected_output', ''),
             error_output='Time limit exceeded',
             execution_time_ms=timeout_seconds * 1000,
-            is_hidden=tc['is_hidden'],
+            is_hidden=tc.get('is_hidden', False),
         )
     except Exception as e:
         return TestCaseResult(
             test_case_id=tc['id'], order=tc['order'],
             passed=False, actual_output='',
+            expected_output=tc.get('expected_output', ''),
             error_output=f'Runner error: {str(e)}',
             execution_time_ms=0,
-            is_hidden=tc['is_hidden'],
+            is_hidden=tc.get('is_hidden', False),
         )
 
     elapsed_ms = int((time.time() - start) * 1000)
     stdout = proc.stdout.decode(errors='replace').strip()
     stderr = proc.stderr.decode(errors='replace').strip()
+
+    print(f"[DEBUG] run returncode: {proc.returncode}", flush=True)
+    print(f"[DEBUG] run stdout: {repr(stdout)}", flush=True)
+    print(f"[DEBUG] run stderr: {repr(stderr)}", flush=True)
+    print(f"[DEBUG] stdin_data: {repr(stdin_data)}", flush=True)
+
+    if test_mode:
+        return TestCaseResult(
+            test_case_id=tc['id'], order=tc['order'],
+            passed=True, actual_output=stdout,
+            expected_output='',
+            error_output=stderr,
+            execution_time_ms=elapsed_ms,
+            is_hidden=False,
+        )
+
     expected = tc['expected_output'].strip()
     passed = stdout == expected and proc.returncode == 0
 
     return TestCaseResult(
         test_case_id=tc['id'], order=tc['order'],
         passed=passed, actual_output=stdout,
+        expected_output=expected,
         error_output=stderr if not passed else '',
         execution_time_ms=elapsed_ms,
-        is_hidden=tc['is_hidden'],
+        is_hidden=tc.get('is_hidden', False),
     )
 
 
@@ -207,7 +251,7 @@ def _build_terminal_output(results: List[TestCaseResult]) -> str:
                 if r.error_output:
                     lines.append(f'   Error:    {r.error_output}')
                 else:
-                    lines.append(f'   Expected: {repr(r.actual_output)}')
-                    lines.append(f'   Got:      (wrong output)')
+                    lines.append(f'   Expected: {repr(r.expected_output)}')
+                    lines.append(f'   Got:      {repr(r.actual_output)}')
 
     return '\n'.join(lines)

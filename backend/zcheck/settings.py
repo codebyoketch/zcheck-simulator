@@ -75,7 +75,7 @@ CHANNEL_LAYERS = {
                 'retry_on_timeout': True,
             }],
             'capacity': 1500,
-            'expiry': 10,
+            'expiry': 60,
         },
     },
 }
