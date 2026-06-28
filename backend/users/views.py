@@ -46,14 +46,16 @@ class CustomTokenObtainPairView(BaseTokenView):
             user = User.objects.get(username=username)
             if not user.is_active and user.block_reason:
                 return Response(
-                    {'detail': user.block_reason},
+                    {
+                        'detail': user.block_reason,
+                        'code': 'account_blocked',
+                    },
                     status=status.HTTP_401_UNAUTHORIZED,
                 )
         except User.DoesNotExist:
             pass
 
         return super().post(request, *args, **kwargs)
-
 
 @api_view(['GET'])
 @permission_classes([permissions.IsAuthenticated])
