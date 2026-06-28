@@ -253,25 +253,35 @@ Only levels that have exercises in the bank are shown. If a level has no exercis
 
 ## Admin Panel (`/admin`)
 
-Accessible to staff users only. Appears in navbar as purple "Admin" link.
+Accessible to staff users only. Appears in navbar as a purple "Admin" link.
 
 | Section | What you can do |
 |---|---|
 | Overview | Stats at a glance |
-| Exercises | Full CRUD — description, starter code, import rules, difficulty |
+| Exercises | Full CRUD — description, starter code, import rules, difficulty, main file config |
 | Test Cases | Per exercise — add/edit/delete, mark public or hidden, set order |
 | Checkpoints | Create checkpoint events, assign language |
 | Languages | Add language, set Docker image, timeout, memory limit, forbidden imports |
-| Users | View students, manage roles, enable/disable accounts |
+| Users | View and search students, manage roles, enable/disable accounts, reset passwords, view full submission and session history, inspect submitted code |
+
+### User Management
+
+- Search users by username or email
+- Toggle active status and staff/admin role via PATCH
+- Reset any user's password directly from the admin UI
+- Expand any user row to browse their full submission history with filters (checkpoint, exercise, date range, status, sort order)
+- Click the `</>` button on any submission to view the exact code submitted
 
 ---
 
-## Adding a New Language
+## Exercise Sandbox (`/sandbox`)
 
-1. Build a Docker image (see `backend/docker/` for examples)
-2. Go to `/admin/languages` → **New language**
-3. Fill in: name, slug, file extension, Docker image name, timeout, memory
-4. Add exercises for that language
+A free-practice area outside of sessions. Accessible from the dashboard.
+
+- Browse and filter exercises by language, checkpoint, and difficulty
+- Two-tab Monaco editor: editable `main.go` + student solution file
+- Run test cases without starting a session — results streamed via WebSocket
+- Full submission history per exercise shown inline
 
 ---
 
@@ -319,6 +329,8 @@ npm install && npm run build
 - [x] Session timer — student-set, auto-terminates on expiry
 - [x] Session summary — per-level results, attempts, pass/fail
 - [x] Admin UI — Exercises, Test Cases, Checkpoints, Languages, Users
+- [x] Admin user management — search, role editing, password reset, submission history, code viewer
+- [x] Exercise sandbox — free practice outside sessions, Monaco editor, WebSocket results
 - [x] docker-compose — auto-migrate and collectstatic on startup
 - [x] Docker runner images — Go (z01 auto-fetched), Python, JS
 - [ ] Full exercise + test case bank (5 seeded, 40+ remaining)
