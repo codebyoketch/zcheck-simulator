@@ -86,6 +86,7 @@ class AdminSubmissionSerializer(serializers.ModelSerializer):
     checkpoint_name = serializers.SerializerMethodField()
     checkpoint_slug = serializers.SerializerMethodField()
     difficulty_pct = serializers.IntegerField(source='exercise.difficulty_pct', read_only=True)
+    language = serializers.CharField(source='exercise.language.slug', read_only=True)
     username = serializers.CharField(source='user.username', read_only=True)
     session_id = serializers.IntegerField(source='session.id', read_only=True, allow_null=True)
     duration_seconds = serializers.SerializerMethodField()
@@ -95,6 +96,7 @@ class AdminSubmissionSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'username', 'exercise_name', 'exercise_slug',
             'checkpoint_name', 'checkpoint_slug', 'difficulty_pct',
+            'language',
             'status', 'submitted_at', 'completed_at',
             'exercise_started_at', 'duration_seconds',
             'session_id', 'compile_output', 'code',
