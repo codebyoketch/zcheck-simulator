@@ -37,6 +37,7 @@ class Session(models.Model):
     timer_seconds = models.IntegerField(default=0)
     timer_started_at = models.DateTimeField(null=True, blank=True)
     level_results = models.JSONField(default=list)
+    expires_at = models.DateTimeField(null=True, blank=True)
 
     @property
     def duration_seconds(self):

@@ -5,7 +5,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   getRandomExercise, getAvailableLevels,
   submitCode, getSubmission, testRun, startSession, endSession,
-  createSubmissionSocket,
+  createSubmissionSocket, getExercise, getActiveSession, updateSession,
 } from '../api/client';
 import './PracticeSession.css';
 
@@ -172,14 +172,16 @@ export default function PracticeSession() {
   const layoutRef = useRef(null);
 
   // Renameable tabs
-  const [tabNames, setTabNames]     = useState({});  // { slug: { main: '...', student: '...' } }
-  const [editingTab, setEditingTab] = useState(null); // 'main' | 'student' | null
+  const [tabNames, setTabNames]     = useState({});
+  const [editingTab, setEditingTab] = useState(null);
 
   const termRef         = useRef(null);
   const sessionRef      = useRef(null);
   const timerRef        = useRef(null);
   const levelsRef       = useRef([]);
   const levelResultsRef = useRef([]);
+  // Ref to break circular dep between saveProgress and loadExerciseForLevel
+  const saveProgressRef = useRef(null);
 
   const getTabName = (key, fallback) => tabNames[exercise?.slug]?.[key] || fallback;
   const setTabName = (key, name) => {
@@ -215,9 +217,10 @@ export default function PracticeSession() {
     window.addEventListener('mouseup', onUp, { once: true });
   };
 
-  // Timer
+  // Timer — only starts fresh if no active session was resumed
+  // (restored timeLeft from backend overrides the URL param)
   useEffect(() => {
-    if (!timerSeconds) return;
+    if (!timeLeft) return;
     timerRef.current = setInterval(() => {
       setTimeLeft(prev => {
         if (prev <= 1) { clearInterval(timerRef.current); handleSessionEnd('timeout'); return 0; }
@@ -225,7 +228,8 @@ export default function PracticeSession() {
       });
     }, 1000);
     return () => clearInterval(timerRef.current);
-  }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // intentionally runs once; timeLeft is set before timer starts
 
   const handleSessionEnd = useCallback(async (reason, results) => {
     clearInterval(timerRef.current);
@@ -239,7 +243,22 @@ export default function PracticeSession() {
     setShowSummary(true);
   }, []);
 
-  const loadExerciseForLevel = useCallback(async (difficulty) => {
+  // saveProgress — persists current position to backend
+  const saveProgress = useCallback(async (levelIdx, exerciseSlug, results) => {
+    if (!sessionRef.current?.id) return;
+    try {
+      await updateSession(sessionRef.current.id, {
+        current_level_index: levelIdx,
+        current_exercise_slug: exerciseSlug,
+        level_results: results,
+      });
+    } catch {}
+  }, []);
+
+  // Keep ref in sync so loadExerciseForLevel can call it without a dep cycle
+  saveProgressRef.current = saveProgress;
+
+  const loadExerciseForLevel = useCallback(async (difficulty, levelIdx) => {
     setLoading(true);
     setTerminal('// Terminal output will appear here after submission.');
     setTermStatus(null);
@@ -251,6 +270,9 @@ export default function PracticeSession() {
       const { data } = await getRandomExercise(params);
       setExercise(data);
       setCode(data.starter_code || '');
+      if (levelIdx !== undefined) {
+        await saveProgressRef.current(levelIdx, data.slug, levelResultsRef.current);
+      }
     } catch {
       setTerminal(`// No exercises available for ${difficulty}%. Skipping...`);
     } finally {
@@ -258,21 +280,64 @@ export default function PracticeSession() {
     }
   }, [checkpointSlug, languageSlug]);
 
-  // Init
+  // Init — resume active session or start fresh
   useEffect(() => {
     const init = async () => {
       try {
         const params = {};
         if (checkpointSlug) params.checkpoint = checkpointSlug;
         if (languageSlug)   params.language   = languageSlug;
-        const { data } = await getAvailableLevels(params);
-        const lvls = data.levels;
+
+        const { data: lvls_data } = await getAvailableLevels(params);
+        const lvls = lvls_data.levels;
         setLevels(lvls);
         levelsRef.current = lvls;
-        const sessionPayload = checkpointSlug ? { checkpoint_slug: checkpointSlug } : {};
-        const { data: sess } = await startSession(sessionPayload);
-        sessionRef.current = sess;
-        await loadExerciseForLevel(lvls[0]);
+
+        // Check for active session to resume
+        const { data: activeSession } = await getActiveSession();
+
+        if (activeSession && activeSession.id) {
+          // Resume existing session
+          sessionRef.current = activeSession;
+
+          // Restore timer from backend (overrides URL param)
+          if (activeSession.time_remaining !== null) {
+            setTimeLeft(activeSession.time_remaining);
+          }
+
+          // Restore level results
+          if (activeSession.level_results?.length) {
+            setLevelResults(activeSession.level_results);
+            levelResultsRef.current = activeSession.level_results;
+          }
+
+          // Restore current level index
+          const savedIdx = activeSession.current_level_index || 0;
+          setCurrentLevelIdx(savedIdx);
+
+          // Restore current exercise or fetch a fresh one for the saved level
+          if (activeSession.current_exercise_slug) {
+            try {
+              const { data: ex } = await getExercise(activeSession.current_exercise_slug);
+              setExercise(ex);
+              setCode(ex.starter_code || '');
+            } catch {
+              await loadExerciseForLevel(lvls[savedIdx], savedIdx);
+            }
+          } else {
+            await loadExerciseForLevel(lvls[savedIdx], savedIdx);
+          }
+
+        } else {
+          // Start a fresh session
+          const sessionPayload = checkpointSlug ? { checkpoint_slug: checkpointSlug } : {};
+          if (timerSeconds) sessionPayload.timer_seconds = timerSeconds;
+
+          const { data: sess } = await startSession(sessionPayload);
+          sessionRef.current = sess;
+
+          await loadExerciseForLevel(lvls[0], 0);
+        }
       } catch {
         setTerminal('// Failed to start session.');
       } finally {
@@ -280,6 +345,7 @@ export default function PracticeSession() {
       }
     };
     init();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Test button — runs editable main_file + student code, shows raw output
@@ -315,13 +381,14 @@ export default function PracticeSession() {
 
       let resultReceived = false;
 
-      const handleResult = (result) => {
+      const handleResult = async (result) => {
         if (resultReceived) return;
         resultReceived = true;
         setTerminal(result.compile_output || '// No output.');
         setTermStatus(result.status === 'accepted' ? 'pass' : 'fail');
         const attempts = currentAttempts + 1;
         setCurrentAttempts(attempts);
+
         if (result.status === 'accepted') {
           const levelResult = {
             difficulty_pct: exercise.difficulty_pct,
@@ -332,13 +399,21 @@ export default function PracticeSession() {
           const newResults = [...levelResultsRef.current, levelResult];
           levelResultsRef.current = newResults;
           setLevelResults(newResults);
+
+          // Persist pass result immediately
+          await saveProgressRef.current(
+            levelsRef.current.indexOf(exercise.difficulty_pct),
+            exercise.slug,
+            newResults,
+          );
+
           const nextIdx = levelsRef.current.indexOf(exercise.difficulty_pct) + 1;
           if (nextIdx >= levelsRef.current.length) {
             setTimeout(() => handleSessionEnd('complete', newResults), 1500);
           } else {
             setTimeout(() => {
               setCurrentLevelIdx(nextIdx);
-              loadExerciseForLevel(levelsRef.current[nextIdx]);
+              loadExerciseForLevel(levelsRef.current[nextIdx], nextIdx);
             }, 1500);
           }
         }
@@ -544,7 +619,6 @@ export default function PracticeSession() {
           </div>
 
           <div className="editor-wrapper">
-            {/* main.go tab — now editable, tracks mainCode state */}
             {activeTab === 'main' && exercise?.main_file && (
               <Editor
                 height="100%"
@@ -556,7 +630,6 @@ export default function PracticeSession() {
                 options={EDITOR_OPTIONS}
               />
             )}
-            {/* Student tab — editable */}
             {activeTab === 'student' && (
               <Editor
                 height="100%"
