@@ -92,3 +92,106 @@
   overflow-y: auto;
   flex: 1;
 }
+
+/* ── Checkpoint drill-down ──────────────────────────────────────────────────── */
+
+.cp-drilldown {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 20px;
+  overflow-y: auto;
+}
+
+/* Card */
+.cp-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-panel);
+  transition: border-color 0.15s;
+}
+
+.cp-card--open {
+  border-color: var(--teal, #2dd4bf);
+}
+
+.cp-card--empty {
+  opacity: 0.45;
+}
+
+/* Clickable header row */
+.cp-card-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  transition: background 0.1s;
+}
+
+.cp-card-header:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cp-card-header:disabled {
+  cursor: default;
+}
+
+.cp-card-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.cp-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+/* Pass rate bar */
+.cp-pass-bar {
+  width: 80px;
+  height: 5px;
+  background: var(--border);
+  border-radius: 99px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.cp-pass-bar-fill {
+  height: 100%;
+  background: var(--pass, #22c55e);
+  border-radius: 99px;
+  transition: width 0.3s ease;
+}
+
+.cp-chevron {
+  font-size: 11px;
+  color: var(--text-muted);
+  width: 12px;
+  text-align: center;
+}
+
+/* Expanded body */
+.cp-card-body {
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.cp-exercises-table {
+  /* inherits .admin-table styles */
+}
+
+.cp-exercises-table td,
+.cp-exercises-table th {
+  padding: 7px 12px;
+}

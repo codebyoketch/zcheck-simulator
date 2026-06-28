@@ -5,10 +5,11 @@ import WaveBg from '../components/WaveBg';
 import './AuthPage.css';
 
 export default function AuthPage() {
-  const [mode, setMode]     = useState('login'); // 'login' | 'register'
-  const [form, setForm]     = useState({ username: '', email: '', password: '', password2: '', first_name: '', last_name: '' });
-  const [error, setError]   = useState('');
-  const [loading, setLoading] = useState(false);
+  const [mode, setMode]         = useState('login'); // 'login' | 'register'
+  const [form, setForm]         = useState({ username: '', email: '', password: '', password2: '', first_name: '', last_name: '' });
+  const [error, setError]       = useState('');
+  const [blockMsg, setBlockMsg] = useState('');
+  const [loading, setLoading]   = useState(false);
 
   const { login, register } = useAuth();
   const navigate = useNavigate();
@@ -18,6 +19,7 @@ export default function AuthPage() {
   const submit = async e => {
     e.preventDefault();
     setError('');
+    setBlockMsg('');
     setLoading(true);
     try {
       if (mode === 'login') {
@@ -33,7 +35,11 @@ export default function AuthPage() {
       navigate('/dashboard');
     } catch (err) {
       const data = err.response?.data;
-      if (data) {
+      // Surface block_reason as a distinct banner
+      const blocked = data?.block_reason || (err.response?.status === 403 ? data?.detail : null);
+      if (blocked) {
+        setBlockMsg(blocked);
+      } else if (data) {
         const msgs = Object.values(data).flat().join(' ');
         setError(msgs || 'Something went wrong.');
       } else {
@@ -47,6 +53,7 @@ export default function AuthPage() {
   const toggle = () => {
     setMode(m => m === 'login' ? 'register' : 'login');
     setError('');
+    setBlockMsg('');
   };
 
   return (
@@ -68,13 +75,13 @@ export default function AuthPage() {
           <div className="auth-tabs">
             <button
               className={`auth-tab ${mode === 'login' ? 'active' : ''}`}
-              onClick={() => { setMode('login'); setError(''); }}
+              onClick={() => { setMode('login'); setError(''); setBlockMsg(''); }}
             >
               Login
             </button>
             <button
               className={`auth-tab ${mode === 'register' ? 'active' : ''}`}
-              onClick={() => { setMode('register'); setError(''); }}
+              onClick={() => { setMode('register'); setError(''); setBlockMsg(''); }}
             >
               Register
             </button>
@@ -123,6 +130,14 @@ export default function AuthPage() {
               <div className="auth-field">
                 <label className="auth-label">Confirm password</label>
                 <input className="input" type="password" value={form.password2} onChange={set('password2')} placeholder="••••••••" required />
+              </div>
+            )}
+
+            {/* Block message banner — distinct from generic errors */}
+            {blockMsg && (
+              <div className="auth-block-banner">
+                <div className="auth-block-banner-title mono">ACCOUNT BLOCKED</div>
+                <div className="auth-block-banner-body">{blockMsg}</div>
               </div>
             )}
 

@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import Modal from '../../components/admin/Modal';
 import './AdminSubmissions.css';
 import {
   adminGetUsersList,
   adminGetUserSubmissions,
   adminGetUserSessions,
-  adminGetCheckpoints,
 } from '../../api/admin';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -40,6 +40,28 @@ const STATUS_COLORS = {
   active:         '#fbbf24',
 };
 
+// Period helper — returns [start, end] Date objects or null
+function periodBounds(period) {
+  const now = new Date();
+  if (period === 'today') {
+    const s = new Date(now); s.setHours(0,0,0,0);
+    return [s, now];
+  }
+  if (period === 'week') {
+    const s = new Date(now); s.setDate(now.getDate() - 7);
+    return [s, now];
+  }
+  if (period === 'month') {
+    const s = new Date(now); s.setMonth(now.getMonth() - 1);
+    return [s, now];
+  }
+  if (period === '3months') {
+    const s = new Date(now); s.setMonth(now.getMonth() - 3);
+    return [s, now];
+  }
+  return null;
+}
+
 function StatusBadge({ status }) {
   const label = status?.replace(/_/g, ' ').toUpperCase() || '—';
   return (
@@ -52,188 +74,508 @@ function StatusBadge({ status }) {
   );
 }
 
-// ── Submission table ──────────────────────────────────────────────────────────
-function SubmissionsTable({ submissions }) {
-  if (!submissions.length) return (
-    <div className="admin-sub-empty mono">No submissions match the current filters.</div>
-  );
+// ── Filter bar ────────────────────────────────────────────────────────────────
+function FilterBar({ filters, onChange, languages, showLanguage = true, showStatus = true }) {
   return (
-    <div className="admin-table-wrap">
-      <table className="admin-table">
-        <thead>
-          <tr>
-            <th className="mono">#</th>
-            <th className="mono">Exercise</th>
-            <th className="mono">Checkpoint</th>
-            <th className="mono">Difficulty</th>
-            <th className="mono">Status</th>
-            <th className="mono">Submitted</th>
-            <th className="mono">Duration</th>
-            <th className="mono">Session</th>
-          </tr>
-        </thead>
-        <tbody>
-          {submissions.map(s => (
-            <tr key={s.id}>
-              <td className="mono" style={{ color: 'var(--text-muted)', fontSize: 11 }}>{s.id}</td>
-              <td className="mono" style={{ fontSize: 12 }}>{s.exercise_name}</td>
-              <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                {s.checkpoint_name || '—'}
-              </td>
-              <td className="mono" style={{ fontSize: 11 }}>{s.difficulty_pct ?? '—'}%</td>
-              <td><StatusBadge status={s.status} /></td>
-              <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                {fmtDate(s.submitted_at)}
-              </td>
-              <td className="mono" style={{ fontSize: 11 }}>{fmtDuration(s.duration_seconds)}</td>
-              <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                {s.session_id ? `#${s.session_id}` : 'Sandbox'}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="admin-sub-filters">
+      {/* Period preset */}
+      <select
+        className="admin-sub-filter-select mono"
+        value={filters.period}
+        onChange={e => onChange({ ...filters, period: e.target.value, dateFrom: '', dateTo: '' })}
+      >
+        <option value="">All time</option>
+        <option value="today">Today</option>
+        <option value="week">Last 7 days</option>
+        <option value="month">Last 30 days</option>
+        <option value="3months">Last 3 months</option>
+        <option value="custom">Custom range…</option>
+      </select>
+
+      {/* Custom date range */}
+      {filters.period === 'custom' && (
+        <>
+          <input
+            type="date"
+            className="admin-sub-filter-input mono"
+            value={filters.dateFrom}
+            onChange={e => onChange({ ...filters, dateFrom: e.target.value })}
+            title="From"
+          />
+          <span className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>→</span>
+          <input
+            type="date"
+            className="admin-sub-filter-input mono"
+            value={filters.dateTo}
+            onChange={e => onChange({ ...filters, dateTo: e.target.value })}
+            title="To"
+          />
+        </>
+      )}
+
+      {/* Language */}
+      {showLanguage && (
+        <select
+          className="admin-sub-filter-select mono"
+          value={filters.language}
+          onChange={e => onChange({ ...filters, language: e.target.value })}
+        >
+          <option value="">All languages</option>
+          {languages.map(l => <option key={l} value={l}>{l}</option>)}
+        </select>
+      )}
+
+      {/* Status */}
+      {showStatus && (
+        <select
+          className="admin-sub-filter-select mono"
+          value={filters.status}
+          onChange={e => onChange({ ...filters, status: e.target.value })}
+        >
+          <option value="">All statuses</option>
+          <option value="accepted">Accepted</option>
+          <option value="wrong_answer">Wrong Answer</option>
+          <option value="compile_error">Compile Error</option>
+          <option value="runtime_error">Runtime Error</option>
+          <option value="time_limit">Time Limit</option>
+          <option value="illegal_import">Illegal Import</option>
+          <option value="pending">Pending</option>
+        </select>
+      )}
+
+      {/* Clear */}
+      {(filters.period || filters.language || filters.status) && (
+        <button
+          className="btn btn-ghost btn-sm mono"
+          onClick={() => onChange({ period: '', dateFrom: '', dateTo: '', language: '', status: '' })}
+        >
+          Clear
+        </button>
+      )}
     </div>
   );
 }
 
-// ── Sessions table ────────────────────────────────────────────────────────────
-function SessionsTable({ sessions }) {
-  if (!sessions.length) return (
-    <div className="admin-sub-empty mono">No sessions match the current filters.</div>
-  );
+function applyDateFilter(items, dateField, filters) {
+  let list = items;
+
+  if (filters.period && filters.period !== 'custom') {
+    const bounds = periodBounds(filters.period);
+    if (bounds) {
+      const [s, e] = bounds;
+      list = list.filter(i => {
+        const d = new Date(i[dateField]);
+        return d >= s && d <= e;
+      });
+    }
+  } else if (filters.period === 'custom') {
+    if (filters.dateFrom) {
+      const s = new Date(filters.dateFrom);
+      list = list.filter(i => new Date(i[dateField]) >= s);
+    }
+    if (filters.dateTo) {
+      const e = new Date(filters.dateTo);
+      e.setHours(23,59,59,999);
+      list = list.filter(i => new Date(i[dateField]) <= e);
+    }
+  }
+
+  return list;
+}
+
+// ── Code viewer modal ─────────────────────────────────────────────────────────
+function CodeViewerModal({ submission, onClose }) {
   return (
-    <div className="admin-table-wrap">
-      <table className="admin-table">
-        <thead>
-          <tr>
-            <th className="mono">#</th>
-            <th className="mono">Checkpoint</th>
-            <th className="mono">Status</th>
-            <th className="mono">Started</th>
-            <th className="mono">Ended</th>
-            <th className="mono">Duration</th>
-            <th className="mono">Submissions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {sessions.map(s => (
-            <tr key={s.id}>
-              <td className="mono" style={{ color: 'var(--text-muted)', fontSize: 11 }}>{s.id}</td>
-              <td className="mono" style={{ fontSize: 12 }}>{s.checkpoint_name || '—'}</td>
-              <td><StatusBadge status={s.status} /></td>
-              <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                {fmtDate(s.started_at)}
+    <Modal
+      title={`${submission.exercise_name} — submission #${submission.id}`}
+      onClose={onClose}
+      footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <StatusBadge status={submission.status} />
+          {submission.language && (
+            <span className="admin-status-badge mono" style={{ color: 'var(--purple)', borderColor: 'var(--purple)' }}>
+              {submission.language.toUpperCase()}
+            </span>
+          )}
+          <span className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+            {fmtDate(submission.submitted_at)}
+          </span>
+          {submission.duration_seconds != null && (
+            <span className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {fmtDuration(submission.duration_seconds)}
+            </span>
+          )}
+        </div>
+
+        {submission.compile_output && (
+          <div style={{
+            background: 'var(--bg-panel)', border: '1px solid var(--fail)',
+            borderRadius: 4, padding: '8px 12px',
+          }}>
+            <div className="mono" style={{ fontSize: 10, color: 'var(--fail)', marginBottom: 4 }}>
+              COMPILE OUTPUT
+            </div>
+            <pre style={{
+              margin: 0, fontFamily: 'monospace', fontSize: 11,
+              color: 'var(--text)', whiteSpace: 'pre-wrap', wordBreak: 'break-all',
+            }}>
+              {submission.compile_output}
+            </pre>
+          </div>
+        )}
+
+        <div style={{
+          background: 'var(--bg-panel)', border: '1px solid var(--border)',
+          borderRadius: 4, padding: '8px 12px',
+        }}>
+          <div className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>CODE</div>
+          <pre style={{
+            margin: 0, fontFamily: 'monospace', fontSize: 12, color: 'var(--text)',
+            whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 480, overflowY: 'auto',
+          }}>
+            {submission.code || '— no code recorded —'}
+          </pre>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── Shared: exercise rows inside an expanded card ─────────────────────────────
+const STATUS_RANK = {
+  accepted: 0, time_limit: 1, illegal_import: 1,
+  wrong_answer: 2, compile_error: 2, runtime_error: 2,
+};
+
+function ExerciseTable({ exercises, onViewCode }) {
+  return (
+    <table className="admin-table cp-exercises-table">
+      <thead>
+        <tr>
+          <th className="mono">Exercise</th>
+          <th className="mono">Result</th>
+          <th className="mono">Attempts</th>
+          <th className="mono">Best status</th>
+          <th className="mono">Last submitted</th>
+          <th className="mono">Language</th>
+          <th className="mono">Difficulty</th>
+          <th className="mono"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {exercises.map(ex => {
+          const sorted = [...ex.subs].sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at));
+          const latest = sorted[0];
+          const best   = ex.subs.reduce((b, s) =>
+            (STATUS_RANK[s.status] ?? 99) < (STATUS_RANK[b.status] ?? 99) ? s : b
+          );
+          return (
+            <tr key={ex.name}>
+              <td className="mono" style={{ fontSize: 12 }}>{ex.name}</td>
+              <td>
+                {ex.passed
+                  ? <span className="mono" style={{ color: 'var(--pass)', fontSize: 11, fontWeight: 700 }}>✓ PASSED</span>
+                  : <span className="mono" style={{ color: 'var(--fail)', fontSize: 11 }}>✗ NOT PASSED</span>
+                }
               </td>
-              <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                {fmtDate(s.ended_at)}
+              <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>{ex.attempts}</td>
+              <td><StatusBadge status={best.status} /></td>
+              <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtDate(latest.submitted_at)}</td>
+              <td className="mono" style={{ fontSize: 11, color: 'var(--purple)' }}>{latest.language || '—'}</td>
+              <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>{latest.difficulty_pct ?? '—'}%</td>
+              <td>
+                <button className="btn-icon" title="View latest code" onClick={() => onViewCode(latest)}>
+                  {'</>'}
+                </button>
               </td>
-              <td className="mono" style={{ fontSize: 11 }}>{fmtDuration(s.duration_seconds)}</td>
-              <td className="mono" style={{ fontSize: 11 }}>{s.submission_count}</td>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function buildExerciseMap(subs) {
+  const map = {};
+  subs.forEach(s => {
+    const key = s.exercise_name || `exercise-${s.exercise_id}`;
+    if (!map[key]) map[key] = { name: key, attempts: 0, passed: false, subs: [] };
+    map[key].attempts += 1;
+    map[key].subs.push(s);
+    if (s.status === 'accepted') map[key].passed = true;
+  });
+  return Object.values(map);
+}
+
+// ── Checkpoint view ───────────────────────────────────────────────────────────
+function CheckpointView({ submissions, sessions, languages }) {
+  const [openId,     setOpenId]     = useState(null);
+  const [viewingSub, setViewingSub] = useState(null);
+  const [filters, setFilters] = useState({ period: '', dateFrom: '', dateTo: '', language: '', status: '' });
+
+  const filteredSubs = useMemo(() => {
+    let list = applyDateFilter(submissions, 'submitted_at', filters);
+    if (filters.language) list = list.filter(s => s.language === filters.language);
+    if (filters.status)   list = list.filter(s => s.status === filters.status);
+    return list;
+  }, [submissions, filters]);
+
+  const subsBySession = {};
+  filteredSubs.forEach(s => {
+    const key = s.session_id ?? '__sandbox__';
+    if (!subsBySession[key]) subsBySession[key] = [];
+    subsBySession[key].push(s);
+  });
+
+  const sortedSessions = [...sessions].sort(
+    (a, b) => new Date(b.started_at) - new Date(a.started_at)
+  );
+
+  const renderCard = (id, title, subtitle, status, subs) => {
+    if (!subs.length) return null;
+    const exercises   = buildExerciseMap(subs);
+    const passedCount = exercises.filter(e => e.passed).length;
+    const isOpen      = openId === id;
+
+    return (
+      <div key={id} className={`cp-card${isOpen ? ' cp-card--open' : ''}`}>
+        <button className="cp-card-header" onClick={() => setOpenId(p => p === id ? null : id)}>
+          <div className="cp-card-title">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, alignItems: 'flex-start' }}>
+              <span className="mono" style={{ fontSize: 13, fontWeight: 700 }}>{title}</span>
+              {subtitle && (
+                <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>{subtitle}</span>
+              )}
+            </div>
+          </div>
+          <div className="cp-card-meta">
+            {status && <StatusBadge status={status} />}
+            <div className="cp-pass-bar" title={`${passedCount}/${exercises.length} exercises passed`}>
+              <div
+                className="cp-pass-bar-fill"
+                style={{ width: exercises.length > 0 ? `${(passedCount / exercises.length) * 100}%` : '0%' }}
+              />
+            </div>
+            <span className="mono" style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+              {passedCount}/{exercises.length} passed
+            </span>
+            <span className="mono" style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+              {subs.length} sub{subs.length !== 1 ? 's' : ''}
+            </span>
+            <span className="cp-chevron mono">{isOpen ? '▾' : '▸'}</span>
+          </div>
+        </button>
+
+        {isOpen && (
+          <div className="cp-card-body">
+            <ExerciseTable exercises={exercises} onViewCode={setViewingSub} />
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const sessionCards = sortedSessions.map(sess => {
+    const subs     = subsBySession[sess.id] || [];
+    const subtitle = [
+      `Started ${fmtDate(sess.started_at)}`,
+      sess.duration_seconds != null ? fmtDuration(sess.duration_seconds) : null,
+    ].filter(Boolean).join(' · ');
+    return renderCard(sess.id, sess.checkpoint_name || 'Unknown Checkpoint', subtitle, sess.status, subs);
+  }).filter(Boolean);
+
+  const sandboxSubs = subsBySession['__sandbox__'] || [];
+  const sandboxCard = renderCard('__sandbox__', 'Sandbox', 'Practice outside sessions', null, sandboxSubs);
+  const hasAnything = sessionCards.length > 0 || sandboxCard;
+
+  return (
+    <div className="admin-sub-content-col">
+      <FilterBar filters={filters} onChange={setFilters} languages={languages} />
+      <div className="cp-drilldown">
+        {!hasAnything ? (
+          <div className="admin-sub-empty mono">No checkpoint sessions match the current filters.</div>
+        ) : (
+          <>
+            {sessionCards}
+            {sandboxCard}
+          </>
+        )}
+      </div>
+      {viewingSub && <CodeViewerModal submission={viewingSub} onClose={() => setViewingSub(null)} />}
+    </div>
+  );
+}
+
+// ── All submissions flat table ────────────────────────────────────────────────
+function AllSubmissionsView({ submissions, languages }) {
+  const [viewingSub, setViewingSub] = useState(null);
+  const [filters, setFilters] = useState({ period: '', dateFrom: '', dateTo: '', language: '', status: '' });
+
+  const filtered = useMemo(() => {
+    let list = applyDateFilter(submissions, 'submitted_at', filters);
+    if (filters.language) list = list.filter(s => s.language === filters.language);
+    if (filters.status)   list = list.filter(s => s.status === filters.status);
+    return [...list].sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at));
+  }, [submissions, filters]);
+
+  return (
+    <div className="admin-sub-content-col">
+      <FilterBar filters={filters} onChange={setFilters} languages={languages} />
+      {!filtered.length ? (
+        <div className="admin-sub-empty mono">No submissions match the current filters.</div>
+      ) : (
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th className="mono">#</th>
+                <th className="mono">Exercise</th>
+                <th className="mono">Checkpoint</th>
+                <th className="mono">Language</th>
+                <th className="mono">Difficulty</th>
+                <th className="mono">Status</th>
+                <th className="mono">Submitted</th>
+                <th className="mono">Duration</th>
+                <th className="mono">Session</th>
+                <th className="mono"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(s => (
+                <tr key={s.id}>
+                  <td className="mono" style={{ color: 'var(--text-muted)', fontSize: 11 }}>{s.id}</td>
+                  <td className="mono" style={{ fontSize: 12 }}>{s.exercise_name}</td>
+                  <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.checkpoint_name || '—'}</td>
+                  <td className="mono" style={{ fontSize: 11, color: 'var(--purple)' }}>{s.language || '—'}</td>
+                  <td className="mono" style={{ fontSize: 11 }}>{s.difficulty_pct ?? '—'}%</td>
+                  <td><StatusBadge status={s.status} /></td>
+                  <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtDate(s.submitted_at)}</td>
+                  <td className="mono" style={{ fontSize: 11 }}>{fmtDuration(s.duration_seconds)}</td>
+                  <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                    {s.session_id ? `#${s.session_id}` : 'Sandbox'}
+                  </td>
+                  <td>
+                    <button className="btn-icon" title="View code" onClick={() => setViewingSub(s)}>
+                      {'</>'}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {viewingSub && <CodeViewerModal submission={viewingSub} onClose={() => setViewingSub(null)} />}
+    </div>
+  );
+}
+
+// ── Sessions flat table ───────────────────────────────────────────────────────
+function SessionsView({ sessions }) {
+  const [filters, setFilters] = useState({ period: '', dateFrom: '', dateTo: '', language: '', status: '' });
+
+  const filtered = useMemo(() => {
+    let list = applyDateFilter(sessions, 'started_at', filters);
+    if (filters.status) list = list.filter(s => s.status === filters.status);
+    return [...list].sort((a, b) => new Date(b.started_at) - new Date(a.started_at));
+  }, [sessions, filters]);
+
+  return (
+    <div className="admin-sub-content-col">
+      <FilterBar filters={filters} onChange={setFilters} languages={[]} showLanguage={false} />
+      {!filtered.length ? (
+        <div className="admin-sub-empty mono">No sessions match the current filters.</div>
+      ) : (
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th className="mono">#</th>
+                <th className="mono">Checkpoint</th>
+                <th className="mono">Status</th>
+                <th className="mono">Started</th>
+                <th className="mono">Ended</th>
+                <th className="mono">Duration</th>
+                <th className="mono">Submissions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(s => (
+                <tr key={s.id}>
+                  <td className="mono" style={{ color: 'var(--text-muted)', fontSize: 11 }}>{s.id}</td>
+                  <td className="mono" style={{ fontSize: 12 }}>{s.checkpoint_name || '—'}</td>
+                  <td><StatusBadge status={s.status} /></td>
+                  <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtDate(s.started_at)}</td>
+                  <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtDate(s.ended_at)}</td>
+                  <td className="mono" style={{ fontSize: 11 }}>{fmtDuration(s.duration_seconds)}</td>
+                  <td className="mono" style={{ fontSize: 11 }}>{s.submission_count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
 export default function AdminSubmissions() {
-  // Users
-  const [users,       setUsers]       = useState([]);
-  const [userSearch,  setUserSearch]  = useState('');
+  const [users,        setUsers]        = useState([]);
+  const [userSearch,   setUserSearch]   = useState('');
   const [selectedUser, setSelectedUser] = useState(null);
   const [usersLoading, setUsersLoading] = useState(true);
 
-  // Checkpoints for filter dropdown
-  const [checkpoints, setCheckpoints] = useState([]);
+  const [view, setView] = useState('checkpoints');
 
-  // View mode
-  const [view, setView] = useState('submissions'); // 'submissions' | 'sessions'
-
-  // Filters
-  const [filters, setFilters] = useState({
-    checkpoint: '',
-    exercise:   '',
-    date_from:  '',
-    date_to:    '',
-    status:     '',
-    sort:       '-submitted_at',
-  });
-
-  // Data
   const [submissions, setSubmissions] = useState([]);
   const [sessions,    setSessions]    = useState([]);
   const [dataLoading, setDataLoading] = useState(false);
   const [userData,    setUserData]    = useState(null);
 
-  // ── Load users + checkpoints on mount ────────────────────────────────────
   useEffect(() => {
-    const load = async () => {
-      try {
-        const [uRes, cpRes] = await Promise.all([
-          adminGetUsersList(),
-          adminGetCheckpoints(),
-        ]);
-        setUsers(uRes.data || []);
-        setCheckpoints(cpRes.data || []);
-      } catch {}
-      finally { setUsersLoading(false); }
-    };
-    load();
+    adminGetUsersList()
+      .then(r => setUsers(r.data || []))
+      .finally(() => setUsersLoading(false));
   }, []);
 
-  // ── Fetch data when user or filters/view change ───────────────────────────
   const fetchData = useCallback(async () => {
     if (!selectedUser) return;
     setDataLoading(true);
     try {
-      if (view === 'submissions') {
-        const params = {};
-        if (filters.checkpoint) params.checkpoint = filters.checkpoint;
-        if (filters.exercise)   params.exercise   = filters.exercise;
-        if (filters.date_from)  params.date_from  = filters.date_from;
-        if (filters.date_to)    params.date_to    = filters.date_to;
-        if (filters.status)     params.status     = filters.status;
-        if (filters.sort)       params.sort       = filters.sort;
-        const { data } = await adminGetUserSubmissions(selectedUser.id, params);
-        setUserData(data.user);
-        setSubmissions(data.submissions || []);
-      } else {
-        const params = {};
-        if (filters.checkpoint) params.checkpoint = filters.checkpoint;
-        if (filters.date_from)  params.date_from  = filters.date_from;
-        if (filters.date_to)    params.date_to    = filters.date_to;
-        if (filters.status)     params.status     = filters.status;
-        const { data } = await adminGetUserSessions(selectedUser.id, params);
-        setUserData(data.user);
-        setSessions(data.sessions || []);
-      }
+      const [subRes, sessRes] = await Promise.all([
+        adminGetUserSubmissions(selectedUser.id, {}),
+        adminGetUserSessions(selectedUser.id, {}),
+      ]);
+      setUserData(subRes.data.user);
+      setSubmissions(subRes.data.submissions || []);
+      setSessions(sessRes.data.sessions || []);
     } catch {}
     finally { setDataLoading(false); }
-  }, [selectedUser, view, filters]);
+  }, [selectedUser]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
-
-  const setFilter = (key, value) => setFilters(prev => ({ ...prev, [key]: value }));
 
   const filteredUsers = users.filter(u =>
     u.username.toLowerCase().includes(userSearch.toLowerCase()) ||
     u.email.toLowerCase().includes(userSearch.toLowerCase())
   );
 
-  const SUBMISSION_STATUSES = [
-    'accepted', 'wrong_answer', 'compile_error',
-    'runtime_error', 'time_limit', 'illegal_import',
-  ];
-  const SESSION_STATUSES = ['active', 'completed', 'abandoned'];
+  // Derive unique languages from submissions for filter dropdowns
+  const languages = useMemo(() => {
+    const set = new Set(submissions.map(s => s.language).filter(Boolean));
+    return [...set].sort();
+  }, [submissions]);
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  const totalPassed = submissions.filter(s => s.status === 'accepted').length;
+
   return (
     <div className="admin-submissions-page">
 
-      {/* ── User selector panel ─────────────────────────────────────── */}
+      {/* ── User sidebar ──────────────────────────────────────────────── */}
       <div className="admin-sub-sidebar">
         <div className="admin-sub-sidebar-header mono">Users</div>
         <div className="admin-sub-user-search-wrap">
@@ -260,9 +602,8 @@ export default function AdminSubmissions() {
         </div>
       </div>
 
-      {/* ── Main content ────────────────────────────────────────────── */}
+      {/* ── Main pane ─────────────────────────────────────────────────── */}
       <div className="admin-sub-main">
-
         {!selectedUser ? (
           <div className="admin-sub-placeholder">
             <span className="mono" style={{ color: 'var(--text-muted)', fontSize: 14 }}>
@@ -279,122 +620,41 @@ export default function AdminSubmissions() {
                 </div>
                 <div className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
                   {userData?.email || selectedUser.email}
+                  {!dataLoading && (
+                    <span style={{ marginLeft: 12 }}>
+                      {totalPassed}/{submissions.length} accepted · {sessions.length} session{sessions.length !== 1 ? 's' : ''}
+                    </span>
+                  )}
                 </div>
               </div>
 
               {/* View toggle */}
               <div className="admin-sub-view-toggle">
-                <button
-                  className={`btn btn-sm${view === 'submissions' ? ' btn-primary' : ' btn-ghost'} mono`}
-                  onClick={() => setView('submissions')}
-                >
-                  Submissions
-                </button>
-                <button
-                  className={`btn btn-sm${view === 'sessions' ? ' btn-primary' : ' btn-ghost'} mono`}
-                  onClick={() => setView('sessions')}
-                >
-                  Sessions
-                </button>
+                {[
+                  { key: 'checkpoints', label: 'Checkpoints' },
+                  { key: 'submissions', label: 'All Submissions' },
+                  { key: 'sessions',    label: 'Sessions' },
+                ].map(({ key, label }) => (
+                  <button
+                    key={key}
+                    className={`btn btn-sm${view === key ? ' btn-primary' : ' btn-ghost'} mono`}
+                    onClick={() => setView(key)}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
             </div>
 
-            {/* Filters bar */}
-            <div className="admin-sub-filters">
-              {/* Checkpoint filter */}
-              <select
-                className="admin-sub-filter-select mono"
-                value={filters.checkpoint}
-                onChange={e => setFilter('checkpoint', e.target.value)}
-              >
-                <option value="">All checkpoints</option>
-                {checkpoints.map(cp => (
-                  <option key={cp.slug} value={cp.slug}>{cp.name}</option>
-                ))}
-              </select>
-
-              {/* Exercise filter (submissions only) */}
-              {view === 'submissions' && (
-                <input
-                  className="admin-sub-filter-input mono"
-                  placeholder="Exercise slug..."
-                  value={filters.exercise}
-                  onChange={e => setFilter('exercise', e.target.value)}
-                />
-              )}
-
-              {/* Date range */}
-              <input
-                type="date"
-                className="admin-sub-filter-input mono"
-                value={filters.date_from}
-                onChange={e => setFilter('date_from', e.target.value)}
-                title="From date"
-              />
-              <input
-                type="date"
-                className="admin-sub-filter-input mono"
-                value={filters.date_to}
-                onChange={e => setFilter('date_to', e.target.value)}
-                title="To date"
-              />
-
-              {/* Status filter */}
-              <select
-                className="admin-sub-filter-select mono"
-                value={filters.status}
-                onChange={e => setFilter('status', e.target.value)}
-              >
-                <option value="">All statuses</option>
-                {(view === 'submissions' ? SUBMISSION_STATUSES : SESSION_STATUSES).map(s => (
-                  <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
-                ))}
-              </select>
-
-              {/* Sort (submissions only) */}
-              {view === 'submissions' && (
-                <select
-                  className="admin-sub-filter-select mono"
-                  value={filters.sort}
-                  onChange={e => setFilter('sort', e.target.value)}
-                >
-                  <option value="-submitted_at">Newest first</option>
-                  <option value="submitted_at">Oldest first</option>
-                  <option value="exercise">Exercise A→Z</option>
-                  <option value="-exercise">Exercise Z→A</option>
-                  <option value="difficulty">Difficulty ↑</option>
-                  <option value="-difficulty">Difficulty ↓</option>
-                </select>
-              )}
-
-              {/* Reset */}
-              <button
-                className="btn btn-ghost btn-sm mono"
-                onClick={() => setFilters({
-                  checkpoint: '', exercise: '', date_from: '',
-                  date_to: '', status: '', sort: '-submitted_at',
-                })}
-              >
-                Reset
-              </button>
-            </div>
-
-            {/* Count */}
-            <div className="admin-sub-count mono">
-              {dataLoading ? 'Loading...' : (
-                view === 'submissions'
-                  ? `${submissions.length} submission${submissions.length !== 1 ? 's' : ''}`
-                  : `${sessions.length} session${sessions.length !== 1 ? 's' : ''}`
-              )}
-            </div>
-
-            {/* Table */}
+            {/* Content */}
             {dataLoading ? (
-              <div className="admin-sub-empty mono">Loading...</div>
+              <div className="admin-sub-empty mono" style={{ padding: '32px 20px' }}>Loading...</div>
+            ) : view === 'checkpoints' ? (
+              <CheckpointView submissions={submissions} sessions={sessions} languages={languages} />
             ) : view === 'submissions' ? (
-              <SubmissionsTable submissions={submissions} />
+              <AllSubmissionsView submissions={submissions} languages={languages} />
             ) : (
-              <SessionsTable sessions={sessions} />
+              <SessionsView sessions={sessions} />
             )}
           </>
         )}

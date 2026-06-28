@@ -47,11 +47,8 @@ function StatusBadge({ status }) {
   const label = status?.replace(/_/g, ' ').toUpperCase() || '—';
   return (
     <span style={{
-      fontFamily: 'monospace',
-      fontSize: 10,
-      fontWeight: 700,
-      padding: '2px 6px',
-      borderRadius: 3,
+      fontFamily: 'monospace', fontSize: 10, fontWeight: 700,
+      padding: '2px 6px', borderRadius: 3,
       border: `1px solid ${STATUS_COLORS[status] || 'var(--border)'}`,
       color: STATUS_COLORS[status] || 'var(--text-muted)',
       whiteSpace: 'nowrap',
@@ -63,23 +60,37 @@ function StatusBadge({ status }) {
 
 // ── Edit user modal ───────────────────────────────────────────────────────────
 function UserModal({ user, onSave, onClose }) {
-  const [form,    setForm]    = useState({ is_active: user.is_active, is_staff: user.is_staff, role: user.role });
-  const [saving,  setSaving]  = useState(false);
-  const [pwMode,  setPwMode]  = useState(false);
-  const [pw,      setPw]      = useState('');
-  const [pw2,     setPw2]     = useState('');
+  const [form, setForm] = useState({
+    username:     user.username     || '',
+    first_name:   user.first_name   || '',
+    last_name:    user.last_name    || '',
+    email:        user.email        || '',
+    is_active:    user.is_active,
+    is_staff:     user.is_staff,
+    role:         user.role         || 'student',
+    block_reason: user.block_reason || '',
+  });
+  const [saving,   setSaving]   = useState(false);
+  const [saveErr,  setSaveErr]  = useState('');
+  const [pwMode,   setPwMode]   = useState(false);
+  const [pw,       setPw]       = useState('');
+  const [pw2,      setPw2]      = useState('');
   const [pwSaving, setPwSaving] = useState(false);
   const [pwError,  setPwError]  = useState('');
   const [pwOk,     setPwOk]     = useState('');
 
-  const setCheck = k => e => setForm(f => ({ ...f, [k]: e.target.checked }));
   const set      = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
+  const setCheck = k => e => setForm(f => ({ ...f, [k]: e.target.checked }));
 
   const submit = async () => {
-    setSaving(true);
-    try { await adminUpdateUser(user.id, form); onSave(); }
-    catch { }
-    finally { setSaving(false); }
+    setSaving(true); setSaveErr('');
+    try {
+      await adminUpdateUser(user.id, form);
+      onSave();
+    } catch (err) {
+      const d = err.response?.data;
+      setSaveErr(typeof d === 'object' ? Object.values(d).flat().join(' ') : 'Failed to save.');
+    } finally { setSaving(false); }
   };
 
   const submitPw = async () => {
@@ -94,9 +105,7 @@ function UserModal({ user, onSave, onClose }) {
     } catch (err) {
       const detail = err.response?.data?.detail;
       setPwError(Array.isArray(detail) ? detail.join(' ') : (detail || 'Failed to update password.'));
-    } finally {
-      setPwSaving(false);
-    }
+    } finally { setPwSaving(false); }
   };
 
   return (
@@ -116,8 +125,11 @@ function UserModal({ user, onSave, onClose }) {
         ) : (
           <>
             <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-            <button className="btn btn-ghost" style={{ color: '#f97316', borderColor: '#f97316' }}
-              onClick={() => setPwMode(true)}>
+            <button
+              className="btn btn-ghost"
+              style={{ color: '#f97316', borderColor: '#f97316' }}
+              onClick={() => setPwMode(true)}
+            >
               Reset password
             </button>
             <button className="btn btn-primary" onClick={submit} disabled={saving}>
@@ -128,15 +140,31 @@ function UserModal({ user, onSave, onClose }) {
       }
     >
       {!pwMode ? (
-        <>
-          <div className="card" style={{ background: 'var(--bg-panel)', gap: 8, display: 'flex', flexDirection: 'column' }}>
-            <div className="mono" style={{ fontSize: 13 }}>{user.username}</div>
-            <div className="text-muted" style={{ fontSize: 12 }}>{user.email}</div>
-            <div className="mono text-muted" style={{ fontSize: 11 }}>
-              Lv.{user.level} · {user.total_xp} XP · joined {fmtDateShort(user.created_at)}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+
+          {/* Identity */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <div className="field">
+              <label>First name</label>
+              <input className="input" value={form.first_name} onChange={set('first_name')} placeholder="First name" />
+            </div>
+            <div className="field">
+              <label>Last name</label>
+              <input className="input" value={form.last_name} onChange={set('last_name')} placeholder="Last name" />
             </div>
           </div>
+          <div className="field">
+            <label>Username</label>
+            <input className="input" value={form.username} onChange={set('username')} placeholder="Username" />
+          </div>
+          <div className="field">
+            <label>Email</label>
+            <input className="input" type="email" value={form.email} onChange={set('email')} placeholder="Email" />
+          </div>
 
+          <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '2px 0' }} />
+
+          {/* Role & access */}
           <div className="field">
             <label>Role</label>
             <select value={form.role} onChange={set('role')}>
@@ -145,7 +173,7 @@ function UserModal({ user, onSave, onClose }) {
             </select>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <label className="check-field">
               <input type="checkbox" checked={form.is_active} onChange={setCheck('is_active')} />
               <span>Active account (can log in)</span>
@@ -155,7 +183,34 @@ function UserModal({ user, onSave, onClose }) {
               <span>Staff / Admin access</span>
             </label>
           </div>
-        </>
+
+          {/* Block reason — only shown when account is disabled */}
+          {!form.is_active && (
+            <div className="field">
+              <label style={{ color: '#f97316' }}>
+                Block message
+                <span style={{ fontWeight: 400, color: 'var(--text-muted)', marginLeft: 6, fontSize: 11 }}>
+                  shown to user on login
+                </span>
+              </label>
+              <textarea
+                className="input"
+                rows={3}
+                value={form.block_reason}
+                onChange={set('block_reason')}
+                placeholder="e.g. Your account has been suspended for academic dishonesty. Contact your instructor."
+                style={{ resize: 'vertical', fontFamily: 'inherit', fontSize: 13 }}
+              />
+            </div>
+          )}
+
+          {saveErr && <div style={{ color: 'var(--fail)', fontSize: 12 }}>{saveErr}</div>}
+
+          {/* Account info (read-only) */}
+          <div className="mono" style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+            Lv.{user.level} · {user.total_xp} XP · joined {fmtDateShort(user.created_at)}
+          </div>
+        </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div className="mono" style={{ fontSize: 12, color: 'var(--text-muted)' }}>
@@ -163,23 +218,13 @@ function UserModal({ user, onSave, onClose }) {
           </div>
           <div className="field">
             <label>New password</label>
-            <input
-              type="password"
-              className="input"
-              placeholder="Enter new password"
-              value={pw}
-              onChange={e => setPw(e.target.value)}
-            />
+            <input type="password" className="input" placeholder="Enter new password"
+              value={pw} onChange={e => setPw(e.target.value)} />
           </div>
           <div className="field">
             <label>Confirm password</label>
-            <input
-              type="password"
-              className="input"
-              placeholder="Repeat new password"
-              value={pw2}
-              onChange={e => setPw2(e.target.value)}
-            />
+            <input type="password" className="input" placeholder="Repeat new password"
+              value={pw2} onChange={e => setPw2(e.target.value)} />
           </div>
           {pwError && <div style={{ color: 'var(--fail)', fontSize: 12 }}>{pwError}</div>}
           {pwOk    && <div style={{ color: 'var(--pass)', fontSize: 12 }}>{pwOk}</div>}
@@ -217,10 +262,8 @@ function CodeViewerModal({ submission, onClose }) {
 
         {submission.compile_output && (
           <div style={{
-            background: 'var(--bg-panel)',
-            border: '1px solid var(--fail)',
-            borderRadius: 4,
-            padding: '8px 12px',
+            background: 'var(--bg-panel)', border: '1px solid var(--fail)',
+            borderRadius: 4, padding: '8px 12px',
           }}>
             <div className="mono" style={{ fontSize: 10, color: 'var(--fail)', marginBottom: 4 }}>COMPILE OUTPUT</div>
             <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: 11, color: 'var(--text)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
@@ -230,21 +273,13 @@ function CodeViewerModal({ submission, onClose }) {
         )}
 
         <div style={{
-          background: 'var(--bg-panel)',
-          border: '1px solid var(--border)',
-          borderRadius: 4,
-          padding: '8px 12px',
+          background: 'var(--bg-panel)', border: '1px solid var(--border)',
+          borderRadius: 4, padding: '8px 12px',
         }}>
           <div className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>CODE</div>
           <pre style={{
-            margin: 0,
-            fontFamily: 'monospace',
-            fontSize: 12,
-            color: 'var(--text)',
-            whiteSpace: 'pre-wrap',
-            wordBreak: 'break-all',
-            maxHeight: 480,
-            overflowY: 'auto',
+            margin: 0, fontFamily: 'monospace', fontSize: 12, color: 'var(--text)',
+            whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 480, overflowY: 'auto',
           }}>
             {submission.code || '— no code recorded —'}
           </pre>
@@ -254,7 +289,7 @@ function CodeViewerModal({ submission, onClose }) {
   );
 }
 
-// ── Submission history panel ──────────────────────────────────────────────────
+// ── History panel (submissions + sessions) ────────────────────────────────────
 const SUBMISSION_STATUSES = ['accepted','wrong_answer','compile_error','runtime_error','time_limit','illegal_import'];
 const SESSION_STATUSES    = ['active','completed','abandoned'];
 const SUB_SORTS = [
@@ -267,12 +302,12 @@ const SUB_SORTS = [
 ];
 
 function UserHistoryPanel({ user, checkpoints }) {
-  const [tab,        setTab]        = useState('submissions');
-  const [submissions,setSubmissions] = useState([]);
-  const [sessions,   setSessions]   = useState([]);
-  const [loading,    setLoading]    = useState(false);
-  const [viewingSub, setViewingSub] = useState(null);
-  const [filters,    setFilters]    = useState({
+  const [tab,         setTab]         = useState('submissions');
+  const [submissions, setSubmissions] = useState([]);
+  const [sessions,    setSessions]    = useState([]);
+  const [loading,     setLoading]     = useState(false);
+  const [viewingSub,  setViewingSub]  = useState(null);
+  const [filters,     setFilters]     = useState({
     checkpoint: '', exercise: '', date_from: '', date_to: '', status: '', sort: '-submitted_at',
   });
 
@@ -313,7 +348,7 @@ function UserHistoryPanel({ user, checkpoints }) {
 
   return (
     <div className="user-history-panel">
-      {/* Tab bar */}
+      {/* Tab bar + filters */}
       <div className="user-history-tabbar">
         <button
           className={`user-history-tab${tab === 'submissions' ? ' active' : ''}`}
@@ -328,7 +363,6 @@ function UserHistoryPanel({ user, checkpoints }) {
           Sessions {tab === 'sessions' && !loading && `(${sessions.length})`}
         </button>
 
-        {/* Filters inline */}
         <div className="user-history-filters">
           <select className="uhf-select mono" value={filters.checkpoint}
             onChange={e => setFilter('checkpoint', e.target.value)}>
@@ -367,7 +401,7 @@ function UserHistoryPanel({ user, checkpoints }) {
         </div>
       </div>
 
-      {/* Content */}
+      {/* Table */}
       <div className="user-history-body">
         {loading ? (
           <div className="admin-loading mono">Loading...</div>
@@ -403,11 +437,7 @@ function UserHistoryPanel({ user, checkpoints }) {
                       {s.session_id ? `#${s.session_id}` : 'Sandbox'}
                     </td>
                     <td>
-                      <button
-                        className="btn-icon"
-                        onClick={() => setViewingSub(s)}
-                        title="View code"
-                      >
+                      <button className="btn-icon" onClick={() => setViewingSub(s)} title="View code">
                         {'</>'}
                       </button>
                     </td>
@@ -450,12 +480,8 @@ function UserHistoryPanel({ user, checkpoints }) {
         )}
       </div>
 
-      {/* Code viewer modal */}
       {viewingSub && (
-        <CodeViewerModal
-          submission={viewingSub}
-          onClose={() => setViewingSub(null)}
-        />
+        <CodeViewerModal submission={viewingSub} onClose={() => setViewingSub(null)} />
       )}
     </div>
   );
@@ -469,7 +495,6 @@ export default function AdminUsers() {
   const [modal,       setModal]       = useState(null);
   const [expanded,    setExpanded]    = useState(null);
   const [checkpoints, setCheckpoints] = useState([]);
-  const searchRef = useRef();
 
   const load = useCallback(() => {
     setLoading(true);
@@ -487,9 +512,7 @@ export default function AdminUsers() {
     adminGetCheckpoints().then(r => setCheckpoints(r.data || [])).catch(() => {});
   }, []);
 
-  const toggleExpand = (userId) => {
-    setExpanded(prev => prev === userId ? null : userId);
-  };
+  const toggleExpand = (userId) => setExpanded(prev => prev === userId ? null : userId);
 
   return (
     <div className="admin-page">
@@ -502,7 +525,6 @@ export default function AdminUsers() {
 
       <div style={{ marginBottom: 20 }}>
         <input
-          ref={searchRef}
           className="input"
           style={{ maxWidth: 320 }}
           placeholder="Search by username or email..."
@@ -522,6 +544,7 @@ export default function AdminUsers() {
               <tr>
                 <th></th>
                 <th>Username</th>
+                <th>Name</th>
                 <th>Email</th>
                 <th>Level</th>
                 <th>XP</th>
@@ -545,22 +568,29 @@ export default function AdminUsers() {
                       </span>
                     </td>
                     <td className="mono">{u.username}</td>
+                    <td className="mono" style={{ fontSize: 12 }}>
+                      {[u.first_name, u.last_name].filter(Boolean).join(' ') || (
+                        <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      )}
+                    </td>
                     <td className="text-muted" style={{ fontSize: 12 }}>{u.email}</td>
                     <td className="mono text-teal">{u.level}</td>
                     <td className="mono text-muted">{u.total_xp}</td>
                     <td>
-                      <span className={`pill ${u.is_staff ? 'badge-purple' : 'badge-teal'}`}
-                        style={{ fontSize: 10 }}>
+                      <span className={`pill ${u.is_staff ? 'badge-purple' : 'badge-teal'}`} style={{ fontSize: 10 }}>
                         {u.is_staff ? 'admin' : u.role}
                       </span>
                     </td>
-                    <td className="mono text-muted" style={{ fontSize: 11 }}>
-                      {fmtDateShort(u.created_at)}
-                    </td>
+                    <td className="mono text-muted" style={{ fontSize: 11 }}>{fmtDateShort(u.created_at)}</td>
                     <td>
-                      <span className={`pill ${u.is_active ? 'pill-on' : 'pill-off'}`}>
-                        {u.is_active ? 'active' : 'disabled'}
-                      </span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span className={`pill ${u.is_active ? 'pill-on' : 'pill-off'}`}>
+                          {u.is_active ? 'active' : 'blocked'}
+                        </span>
+                        {!u.is_active && u.block_reason && (
+                          <span title={u.block_reason} style={{ cursor: 'help', fontSize: 13 }}>⚠️</span>
+                        )}
+                      </div>
                     </td>
                     <td onClick={e => e.stopPropagation()}>
                       <div className="row-actions">
@@ -571,7 +601,7 @@ export default function AdminUsers() {
 
                   {expanded === u.id && (
                     <tr className="user-history-row">
-                      <td colSpan={9} style={{ padding: 0 }}>
+                      <td colSpan={10} style={{ padding: 0 }}>
                         <UserHistoryPanel user={u} checkpoints={checkpoints} />
                       </td>
                     </tr>

@@ -178,3 +178,25 @@
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Block banner — shown when a blocked user tries to log in ─────────────── */
+.auth-block-banner {
+  background: rgba(249, 115, 22, 0.08);
+  border: 1px solid #f97316;
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+
+.auth-block-banner-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #f97316;
+  letter-spacing: 0.05em;
+  margin-bottom: 5px;
+}
+
+.auth-block-banner-body {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+}

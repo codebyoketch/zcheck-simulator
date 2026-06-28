@@ -1,7 +1,7 @@
 /* ── Page layout ──────────────────────────────────────────────────────────── */
 .admin-submissions-page {
   display: flex;
-  height: 100%;
+  height: 100vh;
   overflow: hidden;
 }
 
@@ -23,11 +23,13 @@
   letter-spacing: 0.08em;
   color: var(--text-muted);
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .admin-sub-user-search-wrap {
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .admin-sub-user-search {
@@ -39,6 +41,7 @@
   padding: 5px 8px;
   font-size: 12px;
   outline: none;
+  box-sizing: border-box;
 }
 
 .admin-sub-user-search:focus {
@@ -48,6 +51,7 @@
 .admin-sub-user-list {
   flex: 1;
   overflow-y: auto;
+  min-height: 0;
 }
 
 .admin-sub-user-item {
@@ -74,11 +78,13 @@
   padding-left: 12px;
 }
 
-/* ── Main content ─────────────────────────────────────────────────────────── */
+/* ── Main pane ────────────────────────────────────────────────────────────── */
 .admin-sub-main {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
   background: var(--bg);
 }
@@ -90,7 +96,7 @@
   flex: 1;
 }
 
-/* ── Header ───────────────────────────────────────────────────────────────── */
+/* ── Header (sticky, never scrolls) ──────────────────────────────────────── */
 .admin-sub-main-header {
   display: flex;
   align-items: center;
@@ -106,12 +112,24 @@
   gap: 6px;
 }
 
-/* ── Filters bar ──────────────────────────────────────────────────────────── */
+/* ── Content column (filter bar + scrollable body) ────────────────────────── */
+/* Each view renders this wrapper so the filter bar stays pinned
+   and only the table/cards below it scroll.                       */
+.admin-sub-content-col {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── Filter bar ───────────────────────────────────────────────────────────── */
 .admin-sub-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px 16px;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-card);
   flex-shrink: 0;
@@ -123,9 +141,11 @@
   border: 1px solid var(--border);
   color: var(--text);
   border-radius: 4px;
-  padding: 5px 8px;
-  font-size: 12px;
+  padding: 4px 8px;
+  font-size: 11px;
   outline: none;
+  height: 28px;
+  font-family: monospace;
 }
 
 .admin-sub-filter-select:focus,
@@ -137,13 +157,8 @@
   background: var(--bg-card);
 }
 
-/* ── Count ────────────────────────────────────────────────────────────────── */
-.admin-sub-count {
-  padding: 6px 16px;
-  font-size: 11px;
-  color: var(--text-muted);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
+.admin-sub-filter-input {
+  width: 120px;
 }
 
 /* ── Empty state ──────────────────────────────────────────────────────────── */
@@ -153,10 +168,11 @@
   color: var(--text-muted);
 }
 
-/* ── Table ────────────────────────────────────────────────────────────────── */
+/* ── Table wrapper (this is the scroll container) ─────────────────────────── */
 .admin-table-wrap {
   flex: 1;
-  overflow: auto;
+  overflow: auto;        /* scrolls both axes */
+  min-height: 0;
 }
 
 .admin-table {
@@ -168,6 +184,7 @@
 .admin-table th {
   position: sticky;
   top: 0;
+  z-index: 1;
   background: var(--bg-card);
   padding: 8px 14px;
   text-align: left;
@@ -183,6 +200,7 @@
   padding: 8px 14px;
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
+  white-space: nowrap;   /* prevent rows from wrapping/cramming */
 }
 
 .admin-table tr:hover td {
@@ -196,5 +214,103 @@
   padding: 2px 6px;
   border-radius: 3px;
   border: 1px solid;
+  white-space: nowrap;
+}
+
+/* ── Checkpoint drill-down ────────────────────────────────────────────────── */
+.cp-drilldown {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;      /* cards scroll here */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 20px;
+}
+
+.cp-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--bg-panel);
+  transition: border-color 0.15s;
+  flex-shrink: 0;        /* cards don't squash — they push scroll */
+}
+
+.cp-card--open {
+  border-color: var(--teal, #2dd4bf);
+}
+
+.cp-card--empty {
+  opacity: 0.45;
+}
+
+.cp-card-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  transition: background 0.1s;
+}
+
+.cp-card-header:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.cp-card-header:disabled {
+  cursor: default;
+}
+
+.cp-card-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.cp-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.cp-pass-bar {
+  width: 80px;
+  height: 5px;
+  background: var(--border);
+  border-radius: 99px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.cp-pass-bar-fill {
+  height: 100%;
+  background: var(--pass, #22c55e);
+  border-radius: 99px;
+  transition: width 0.3s ease;
+}
+
+.cp-chevron {
+  font-size: 11px;
+  color: var(--text-muted);
+  width: 12px;
+  text-align: center;
+}
+
+.cp-card-body {
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.cp-exercises-table td,
+.cp-exercises-table th {
+  padding: 7px 12px;
   white-space: nowrap;
 }
