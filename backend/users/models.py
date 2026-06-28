@@ -17,6 +17,7 @@ class User(AbstractUser):
     bio = models.TextField(blank=True)
     total_xp = models.IntegerField(default=0)
     level = models.IntegerField(default=1)
+    block_reason = models.TextField(blank=True, default='')
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -33,3 +34,4 @@ class User(AbstractUser):
 
     class Meta:
         db_table = 'users'
+        

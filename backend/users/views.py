@@ -1,7 +1,7 @@
 from rest_framework import generics, permissions, status, filters
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.views import TokenObtainPairView as BaseTokenView
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from .models import User
@@ -36,6 +36,23 @@ class UserDetailView(generics.RetrieveUpdateAPIView):
     queryset = User.objects.all()
     serializer_class = UserAdminSerializer
     permission_classes = [permissions.IsAdminUser]
+
+
+class CustomTokenObtainPairView(BaseTokenView):
+    """Return block_reason in the 401 response when account is inactive."""
+    def post(self, request, *args, **kwargs):
+        username = request.data.get('username', '')
+        try:
+            user = User.objects.get(username=username)
+            if not user.is_active and user.block_reason:
+                return Response(
+                    {'detail': user.block_reason},
+                    status=status.HTTP_401_UNAUTHORIZED,
+                )
+        except User.DoesNotExist:
+            pass
+
+        return super().post(request, *args, **kwargs)
 
 
 @api_view(['GET'])

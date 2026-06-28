@@ -40,6 +40,7 @@ class UserAdminSerializer(serializers.ModelSerializer):
         fields = (
             'id', 'username', 'email', 'first_name', 'last_name',
             'role', 'is_active', 'is_staff', 'total_xp', 'level',
-            'created_at', 'last_login',
+            'created_at', 'last_login', 'block_reason',
         )
         read_only_fields = ('id', 'created_at', 'last_login')
+        
