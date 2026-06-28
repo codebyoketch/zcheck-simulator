@@ -531,16 +531,11 @@ export default function PracticeSession() {
                 )}
               </div>
             </div>
-
             <div className="editor-actions">
-              {/* Test button — runs editable main_file + student code */}
-              {exercise?.main_file && (
-                <button className="btn btn-ghost btn-sm" onClick={handleTest}
-                  disabled={loading || testing || submitting || !exercise}>
-                  {testing ? <><span className="spinner" /> Testing...</> : 'Test'}
-                </button>
-              )}
-              {/* Submit button — runs submit_main_file against graded test cases */}
+              <button className="btn btn-ghost btn-sm" onClick={handleTest}
+                disabled={loading || testing || submitting || !exercise}>
+                {testing ? <><span className="spinner" /> Testing...</> : 'Test'}
+              </button>
               <button className="btn btn-primary btn-sm" onClick={handleSubmit}
                 disabled={loading || submitting || !exercise}>
                 {submitting ? <><span className="spinner" /> Running...</> : 'Submit'}
