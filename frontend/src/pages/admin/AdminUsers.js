@@ -1,10 +1,8 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Modal from '../../components/admin/Modal';
 import './AdminUsersHistory.css';
 import {
   adminGetUsers, adminUpdateUser, adminResetPassword,
-  adminGetCheckpoints,
-  adminGetUserSubmissions, adminGetUserSessions,
 } from '../../api/admin';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -21,14 +19,6 @@ function fmtDateShort(iso) {
   return new Date(iso).toLocaleDateString();
 }
 
-function fmtDuration(s) {
-  if (s == null) return '—';
-  if (s < 60) return `${s}s`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ${s % 60}s`;
-  return `${Math.floor(m / 60)}h ${m % 60}m`;
-}
-
 const STATUS_COLORS = {
   accepted:       'var(--pass)',
   wrong_answer:   'var(--fail)',
@@ -42,21 +32,6 @@ const STATUS_COLORS = {
   abandoned:      'var(--fail)',
   active:         '#fbbf24',
 };
-
-function StatusBadge({ status }) {
-  const label = status?.replace(/_/g, ' ').toUpperCase() || '—';
-  return (
-    <span style={{
-      fontFamily: 'monospace', fontSize: 10, fontWeight: 700,
-      padding: '2px 6px', borderRadius: 3,
-      border: `1px solid ${STATUS_COLORS[status] || 'var(--border)'}`,
-      color: STATUS_COLORS[status] || 'var(--text-muted)',
-      whiteSpace: 'nowrap',
-    }}>
-      {label}
-    </span>
-  );
-}
 
 // ── Edit user modal ───────────────────────────────────────────────────────────
 function UserModal({ user, onSave, onClose }) {
@@ -234,267 +209,12 @@ function UserModal({ user, onSave, onClose }) {
   );
 }
 
-// ── Code viewer modal ─────────────────────────────────────────────────────────
-function CodeViewerModal({ submission, onClose }) {
-  return (
-    <Modal
-      title={`${submission.exercise_name} — submission #${submission.id}`}
-      onClose={onClose}
-      footer={<button className="btn btn-ghost" onClick={onClose}>Close</button>}
-    >
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <StatusBadge status={submission.status} />
-          <span className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-            {fmtDate(submission.submitted_at)}
-          </span>
-          {submission.duration_seconds != null && (
-            <span className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              {fmtDuration(submission.duration_seconds)}
-            </span>
-          )}
-          {submission.checkpoint_name && (
-            <span className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-              {submission.checkpoint_name}
-            </span>
-          )}
-        </div>
-
-        {submission.compile_output && (
-          <div style={{
-            background: 'var(--bg-panel)', border: '1px solid var(--fail)',
-            borderRadius: 4, padding: '8px 12px',
-          }}>
-            <div className="mono" style={{ fontSize: 10, color: 'var(--fail)', marginBottom: 4 }}>COMPILE OUTPUT</div>
-            <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: 11, color: 'var(--text)', whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-              {submission.compile_output}
-            </pre>
-          </div>
-        )}
-
-        <div style={{
-          background: 'var(--bg-panel)', border: '1px solid var(--border)',
-          borderRadius: 4, padding: '8px 12px',
-        }}>
-          <div className="mono" style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>CODE</div>
-          <pre style={{
-            margin: 0, fontFamily: 'monospace', fontSize: 12, color: 'var(--text)',
-            whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 480, overflowY: 'auto',
-          }}>
-            {submission.code || '— no code recorded —'}
-          </pre>
-        </div>
-      </div>
-    </Modal>
-  );
-}
-
-// ── History panel (submissions + sessions) ────────────────────────────────────
-const SUBMISSION_STATUSES = ['accepted','wrong_answer','compile_error','runtime_error','time_limit','illegal_import'];
-const SESSION_STATUSES    = ['active','completed','abandoned'];
-const SUB_SORTS = [
-  { value: '-submitted_at', label: 'Newest first' },
-  { value: 'submitted_at',  label: 'Oldest first' },
-  { value: 'exercise',      label: 'Exercise A→Z' },
-  { value: '-exercise',     label: 'Exercise Z→A' },
-  { value: 'difficulty',    label: 'Difficulty ↑' },
-  { value: '-difficulty',   label: 'Difficulty ↓' },
-];
-
-function UserHistoryPanel({ user, checkpoints }) {
-  const [tab,         setTab]         = useState('submissions');
-  const [submissions, setSubmissions] = useState([]);
-  const [sessions,    setSessions]    = useState([]);
-  const [loading,     setLoading]     = useState(false);
-  const [viewingSub,  setViewingSub]  = useState(null);
-  const [filters,     setFilters]     = useState({
-    checkpoint: '', exercise: '', date_from: '', date_to: '', status: '', sort: '-submitted_at',
-  });
-
-  const setFilter = (k, v) => setFilters(f => ({ ...f, [k]: v }));
-
-  const fetchData = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
-    try {
-      if (tab === 'submissions') {
-        const params = {};
-        if (filters.checkpoint) params.checkpoint = filters.checkpoint;
-        if (filters.exercise)   params.exercise   = filters.exercise;
-        if (filters.date_from)  params.date_from  = filters.date_from;
-        if (filters.date_to)    params.date_to    = filters.date_to;
-        if (filters.status)     params.status     = filters.status;
-        if (filters.sort)       params.sort       = filters.sort;
-        const { data } = await adminGetUserSubmissions(user.id, params);
-        setSubmissions(data.submissions || []);
-      } else {
-        const params = {};
-        if (filters.checkpoint) params.checkpoint = filters.checkpoint;
-        if (filters.date_from)  params.date_from  = filters.date_from;
-        if (filters.date_to)    params.date_to    = filters.date_to;
-        if (filters.status)     params.status     = filters.status;
-        const { data } = await adminGetUserSessions(user.id, params);
-        setSessions(data.sessions || []);
-      }
-    } catch {}
-    finally { setLoading(false); }
-  }, [user, tab, filters]);
-
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  const resetFilters = () => setFilters({
-    checkpoint: '', exercise: '', date_from: '', date_to: '', status: '', sort: '-submitted_at',
-  });
-
-  return (
-    <div className="user-history-panel">
-      {/* Tab bar + filters */}
-      <div className="user-history-tabbar">
-        <button
-          className={`user-history-tab${tab === 'submissions' ? ' active' : ''}`}
-          onClick={() => setTab('submissions')}
-        >
-          Submissions {tab === 'submissions' && !loading && `(${submissions.length})`}
-        </button>
-        <button
-          className={`user-history-tab${tab === 'sessions' ? ' active' : ''}`}
-          onClick={() => setTab('sessions')}
-        >
-          Sessions {tab === 'sessions' && !loading && `(${sessions.length})`}
-        </button>
-
-        <div className="user-history-filters">
-          <select className="uhf-select mono" value={filters.checkpoint}
-            onChange={e => setFilter('checkpoint', e.target.value)}>
-            <option value="">All checkpoints</option>
-            {checkpoints.map(cp => (
-              <option key={cp.slug} value={cp.slug}>{cp.name}</option>
-            ))}
-          </select>
-
-          {tab === 'submissions' && (
-            <input className="uhf-input mono" placeholder="Exercise slug..."
-              value={filters.exercise} onChange={e => setFilter('exercise', e.target.value)} />
-          )}
-
-          <input type="date" className="uhf-input mono" value={filters.date_from}
-            onChange={e => setFilter('date_from', e.target.value)} title="From" />
-          <input type="date" className="uhf-input mono" value={filters.date_to}
-            onChange={e => setFilter('date_to', e.target.value)} title="To" />
-
-          <select className="uhf-select mono" value={filters.status}
-            onChange={e => setFilter('status', e.target.value)}>
-            <option value="">All statuses</option>
-            {(tab === 'submissions' ? SUBMISSION_STATUSES : SESSION_STATUSES).map(s => (
-              <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>
-            ))}
-          </select>
-
-          {tab === 'submissions' && (
-            <select className="uhf-select mono" value={filters.sort}
-              onChange={e => setFilter('sort', e.target.value)}>
-              {SUB_SORTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-            </select>
-          )}
-
-          <button className="btn btn-ghost btn-sm mono" onClick={resetFilters}>Reset</button>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="user-history-body">
-        {loading ? (
-          <div className="admin-loading mono">Loading...</div>
-        ) : tab === 'submissions' ? (
-          submissions.length === 0 ? (
-            <div className="admin-empty mono">No submissions match the current filters.</div>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th className="mono">#</th>
-                  <th className="mono">Exercise</th>
-                  <th className="mono">Checkpoint</th>
-                  <th className="mono">Diff</th>
-                  <th className="mono">Status</th>
-                  <th className="mono">Submitted</th>
-                  <th className="mono">Duration</th>
-                  <th className="mono">Session</th>
-                  <th className="mono"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {submissions.map(s => (
-                  <tr key={s.id}>
-                    <td className="mono" style={{ color: 'var(--text-muted)', fontSize: 11 }}>{s.id}</td>
-                    <td className="mono" style={{ fontSize: 12 }}>{s.exercise_name}</td>
-                    <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>{s.checkpoint_name || '—'}</td>
-                    <td className="mono" style={{ fontSize: 11 }}>{s.difficulty_pct ?? '—'}%</td>
-                    <td><StatusBadge status={s.status} /></td>
-                    <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtDate(s.submitted_at)}</td>
-                    <td className="mono" style={{ fontSize: 11 }}>{fmtDuration(s.duration_seconds)}</td>
-                    <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      {s.session_id ? `#${s.session_id}` : 'Sandbox'}
-                    </td>
-                    <td>
-                      <button className="btn-icon" onClick={() => setViewingSub(s)} title="View code">
-                        {'</>'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )
-        ) : (
-          sessions.length === 0 ? (
-            <div className="admin-empty mono">No sessions match the current filters.</div>
-          ) : (
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th className="mono">#</th>
-                  <th className="mono">Checkpoint</th>
-                  <th className="mono">Status</th>
-                  <th className="mono">Started</th>
-                  <th className="mono">Ended</th>
-                  <th className="mono">Duration</th>
-                  <th className="mono">Submissions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sessions.map(s => (
-                  <tr key={s.id}>
-                    <td className="mono" style={{ color: 'var(--text-muted)', fontSize: 11 }}>{s.id}</td>
-                    <td className="mono" style={{ fontSize: 12 }}>{s.checkpoint_name || '—'}</td>
-                    <td><StatusBadge status={s.status} /></td>
-                    <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtDate(s.started_at)}</td>
-                    <td className="mono" style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmtDate(s.ended_at)}</td>
-                    <td className="mono" style={{ fontSize: 11 }}>{fmtDuration(s.duration_seconds)}</td>
-                    <td className="mono" style={{ fontSize: 11 }}>{s.submission_count}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )
-        )}
-      </div>
-
-      {viewingSub && (
-        <CodeViewerModal submission={viewingSub} onClose={() => setViewingSub(null)} />
-      )}
-    </div>
-  );
-}
-
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function AdminUsers() {
-  const [users,       setUsers]       = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [search,      setSearch]      = useState('');
-  const [modal,       setModal]       = useState(null);
-  const [expanded,    setExpanded]    = useState(null);
-  const [checkpoints, setCheckpoints] = useState([]);
+  const [users,   setUsers]   = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search,  setSearch]  = useState('');
+  const [modal,   setModal]   = useState(null);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -507,12 +227,6 @@ export default function AdminUsers() {
     const t = setTimeout(load, 350);
     return () => clearTimeout(t);
   }, [load]);
-
-  useEffect(() => {
-    adminGetCheckpoints().then(r => setCheckpoints(r.data || [])).catch(() => {});
-  }, []);
-
-  const toggleExpand = (userId) => setExpanded(prev => prev === userId ? null : userId);
 
   return (
     <div className="admin-page">
@@ -542,7 +256,6 @@ export default function AdminUsers() {
           <table className="admin-table">
             <thead>
               <tr>
-                <th></th>
                 <th>Username</th>
                 <th>Name</th>
                 <th>Email</th>
@@ -556,57 +269,38 @@ export default function AdminUsers() {
             </thead>
             <tbody>
               {users.map(u => (
-                <React.Fragment key={u.id}>
-                  <tr
-                    className={`user-row${expanded === u.id ? ' expanded' : ''}`}
-                    onClick={() => toggleExpand(u.id)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <td style={{ width: 28, textAlign: 'center' }}>
-                      <span className="mono" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-                        {expanded === u.id ? '▾' : '▸'}
+                <tr key={u.id}>
+                  <td className="mono">{u.username}</td>
+                  <td className="mono" style={{ fontSize: 12 }}>
+                    {[u.first_name, u.last_name].filter(Boolean).join(' ') || (
+                      <span style={{ color: 'var(--text-muted)' }}>—</span>
+                    )}
+                  </td>
+                  <td className="text-muted" style={{ fontSize: 12 }}>{u.email}</td>
+                  <td className="mono text-teal">{u.level}</td>
+                  <td className="mono text-muted">{u.total_xp}</td>
+                  <td>
+                    <span className={`pill ${u.is_staff ? 'badge-purple' : 'badge-teal'}`} style={{ fontSize: 10 }}>
+                      {u.is_staff ? 'admin' : u.role}
+                    </span>
+                  </td>
+                  <td className="mono text-muted" style={{ fontSize: 11 }}>{fmtDateShort(u.created_at)}</td>
+                  <td>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className={`pill ${u.is_active ? 'pill-on' : 'pill-off'}`}>
+                        {u.is_active ? 'active' : 'blocked'}
                       </span>
-                    </td>
-                    <td className="mono">{u.username}</td>
-                    <td className="mono" style={{ fontSize: 12 }}>
-                      {[u.first_name, u.last_name].filter(Boolean).join(' ') || (
-                        <span style={{ color: 'var(--text-muted)' }}>—</span>
+                      {!u.is_active && u.block_reason && (
+                        <span title={u.block_reason} style={{ cursor: 'help', fontSize: 13 }}>⚠️</span>
                       )}
-                    </td>
-                    <td className="text-muted" style={{ fontSize: 12 }}>{u.email}</td>
-                    <td className="mono text-teal">{u.level}</td>
-                    <td className="mono text-muted">{u.total_xp}</td>
-                    <td>
-                      <span className={`pill ${u.is_staff ? 'badge-purple' : 'badge-teal'}`} style={{ fontSize: 10 }}>
-                        {u.is_staff ? 'admin' : u.role}
-                      </span>
-                    </td>
-                    <td className="mono text-muted" style={{ fontSize: 11 }}>{fmtDateShort(u.created_at)}</td>
-                    <td>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                        <span className={`pill ${u.is_active ? 'pill-on' : 'pill-off'}`}>
-                          {u.is_active ? 'active' : 'blocked'}
-                        </span>
-                        {!u.is_active && u.block_reason && (
-                          <span title={u.block_reason} style={{ cursor: 'help', fontSize: 13 }}>⚠️</span>
-                        )}
-                      </div>
-                    </td>
-                    <td onClick={e => e.stopPropagation()}>
-                      <div className="row-actions">
-                        <button className="btn-icon" onClick={() => setModal(u)}>Edit</button>
-                      </div>
-                    </td>
-                  </tr>
-
-                  {expanded === u.id && (
-                    <tr className="user-history-row">
-                      <td colSpan={10} style={{ padding: 0 }}>
-                        <UserHistoryPanel user={u} checkpoints={checkpoints} />
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
+                    </div>
+                  </td>
+                  <td>
+                    <div className="row-actions">
+                      <button className="btn-icon" onClick={() => setModal(u)}>Edit</button>
+                    </div>
+                  </td>
+                </tr>
               ))}
             </tbody>
           </table>

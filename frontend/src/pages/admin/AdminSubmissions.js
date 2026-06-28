@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react'; // useMemo used in view components
 import Modal from '../../components/admin/Modal';
 import './AdminSubmissions.css';
 import {
   adminGetUsersList,
   adminGetUserSubmissions,
   adminGetUserSessions,
+  adminGetLanguages,
 } from '../../api/admin';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -121,7 +122,7 @@ function FilterBar({ filters, onChange, languages, showLanguage = true, showStat
           onChange={e => onChange({ ...filters, language: e.target.value })}
         >
           <option value="">All languages</option>
-          {languages.map(l => <option key={l} value={l}>{l}</option>)}
+          {languages.map(l => <option key={l.slug} value={l.slug}>{l.name}</option>)}
         </select>
       )}
 
@@ -316,27 +317,40 @@ function CheckpointView({ submissions, sessions, languages }) {
   const [viewingSub, setViewingSub] = useState(null);
   const [filters, setFilters] = useState({ period: '', dateFrom: '', dateTo: '', language: '', status: '' });
 
-  const filteredSubs = useMemo(() => {
+  // All subs by session — controls which cards render
+  const allSubsBySession = useMemo(() => {
+    const map = {};
+    submissions.forEach(s => {
+      const key = s.session_id ?? '__sandbox__';
+      if (!map[key]) map[key] = [];
+      map[key].push(s);
+    });
+    return map;
+  }, [submissions]);
+
+  // Filtered subs by session — controls what's shown inside each card
+  const filteredSubsBySession = useMemo(() => {
     let list = applyDateFilter(submissions, 'submitted_at', filters);
     if (filters.language) list = list.filter(s => s.language === filters.language);
     if (filters.status)   list = list.filter(s => s.status === filters.status);
-    return list;
+    const map = {};
+    list.forEach(s => {
+      const key = s.session_id ?? '__sandbox__';
+      if (!map[key]) map[key] = [];
+      map[key].push(s);
+    });
+    return map;
   }, [submissions, filters]);
-
-  const subsBySession = {};
-  filteredSubs.forEach(s => {
-    const key = s.session_id ?? '__sandbox__';
-    if (!subsBySession[key]) subsBySession[key] = [];
-    subsBySession[key].push(s);
-  });
 
   const sortedSessions = [...sessions].sort(
     (a, b) => new Date(b.started_at) - new Date(a.started_at)
   );
 
-  const renderCard = (id, title, subtitle, status, subs) => {
-    if (!subs.length) return null;
-    const exercises   = buildExerciseMap(subs);
+  const renderCard = (id, title, subtitle, status) => {
+    const allSubs      = allSubsBySession[id] || [];
+    const filteredSubs = filteredSubsBySession[id] || [];
+    if (!allSubs.length) return null;
+    const exercises   = buildExerciseMap(filteredSubs);
     const passedCount = exercises.filter(e => e.passed).length;
     const isOpen      = openId === id;
 
@@ -363,7 +377,7 @@ function CheckpointView({ submissions, sessions, languages }) {
               {passedCount}/{exercises.length} passed
             </span>
             <span className="mono" style={{ fontSize: 11, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-              {subs.length} sub{subs.length !== 1 ? 's' : ''}
+              {filteredSubs.length}/{allSubs.length} sub{allSubs.length !== 1 ? 's' : ''}
             </span>
             <span className="cp-chevron mono">{isOpen ? '▾' : '▸'}</span>
           </div>
@@ -379,17 +393,15 @@ function CheckpointView({ submissions, sessions, languages }) {
   };
 
   const sessionCards = sortedSessions.map(sess => {
-    const subs     = subsBySession[sess.id] || [];
     const subtitle = [
       `Started ${fmtDate(sess.started_at)}`,
       sess.duration_seconds != null ? fmtDuration(sess.duration_seconds) : null,
     ].filter(Boolean).join(' · ');
-    return renderCard(sess.id, sess.checkpoint_name || 'Unknown Checkpoint', subtitle, sess.status, subs);
+    return renderCard(sess.id, sess.checkpoint_name || 'Unknown Checkpoint', subtitle, sess.status);
   }).filter(Boolean);
 
-  const sandboxSubs = subsBySession['__sandbox__'] || [];
-  const sandboxCard = renderCard('__sandbox__', 'Sandbox', 'Practice outside sessions', null, sandboxSubs);
-  const hasAnything = sessionCards.length > 0 || sandboxCard;
+  const sandboxCard = renderCard('__sandbox__', 'Sandbox', 'Practice outside sessions', null);
+  const hasAnything = sessionCards.length > 0 || !!sandboxCard;
 
   return (
     <div className="admin-sub-content-col">
@@ -564,11 +576,17 @@ export default function AdminSubmissions() {
     u.email.toLowerCase().includes(userSearch.toLowerCase())
   );
 
-  // Derive unique languages from submissions for filter dropdowns
-  const languages = useMemo(() => {
-    const set = new Set(submissions.map(s => s.language).filter(Boolean));
-    return [...set].sort();
-  }, [submissions]);
+  // Fetch full language list from API (same source as AdminLanguages page)
+  const [languages, setLanguages] = useState([]);
+  useEffect(() => {
+    adminGetLanguages()
+      .then(r => setLanguages(
+        (r.data || [])
+          .filter(l => l.is_active)
+          .map(l => ({ slug: l.slug, name: l.name }))
+      ))
+      .catch(() => {});
+  }, []);
 
   const totalPassed = submissions.filter(s => s.status === 'accepted').length;
 
