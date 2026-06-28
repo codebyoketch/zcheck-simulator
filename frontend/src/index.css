@@ -154,3 +154,4 @@ html, body, #root {
 .text-muted { color: var(--text-muted); }
 .text-fail { color: var(--fail); }
 .text-pass { color: var(--pass); }
+

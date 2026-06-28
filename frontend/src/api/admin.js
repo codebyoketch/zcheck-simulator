@@ -26,11 +26,12 @@ export const adminUpdateCheckpoint = (slug, data) => api.put(`/admin/checkpoints
 export const adminDeleteCheckpoint = (slug)     => api.delete(`/admin/checkpoints/${slug}/`);
 
 // ── Users ─────────────────────────────────────────────────────────────────────
-export const adminGetUsers   = (params)   => api.get('/auth/admin/users/', { params });
-export const adminGetUser    = (id)       => api.get(`/auth/admin/users/${id}/`);
-export const adminUpdateUser = (id, data) => api.put(`/auth/admin/users/${id}/`, data);
+export const adminGetUsers        = (params)      => api.get('/auth/admin/users/', { params });
+export const adminGetUser         = (id)          => api.get(`/auth/admin/users/${id}/`);
+export const adminUpdateUser      = (id, data)    => api.put(`/auth/admin/users/${id}/`, data);
+export const adminResetPassword   = (id, data)    => api.post(`/auth/admin/users/${id}/reset-password/`, data);
 
 // ── Submission & Session history (admin) ──────────────────────────────────────
-export const adminGetUsersList       = ()                    => api.get('/admin/users/');
-export const adminGetUserSubmissions = (userId, params)      => api.get(`/admin/users/${userId}/submissions/`, { params });
-export const adminGetUserSessions    = (userId, params)      => api.get(`/admin/users/${userId}/sessions/`, { params });
+export const adminGetUsersList       = ()               => api.get('/admin/users/');
+export const adminGetUserSubmissions = (userId, params) => api.get(`/admin/users/${userId}/submissions/`, { params });
+export const adminGetUserSessions    = (userId, params) => api.get(`/admin/users/${userId}/sessions/`, { params });

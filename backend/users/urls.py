@@ -11,4 +11,5 @@ urlpatterns = [
     # Admin
     path('admin/users/', views.UserListView.as_view(), name='user_list'),
     path('admin/users/<int:pk>/', views.UserDetailView.as_view(), name='user_detail'),
+    path('admin/users/<int:pk>/reset-password/', views.admin_reset_password, name='admin_reset_password'),
 ]
